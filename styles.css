@@ -692,3 +692,57 @@ body.pdf-plus-vim-hint-inverted {
     --pdf-plus-vim-hint-color: var(--text-on-accent);
     --pdf-plus-vim-hint-background-color: hsl(var(--accent-h), var(--accent-s), var(--accent-l));
 }
+
+/* ============================================================ */
+/* PDF++ AI module (MiniMax) — experimental                     */
+/* ============================================================ */
+
+.pdf-plus-ai-sidebar { display: flex; flex-direction: column; height: 100%; padding: 0.5em; gap: 0.5em; }
+.pdf-plus-ai-toolbar { display: flex; gap: 0.4em; flex-wrap: wrap; }
+.pdf-plus-ai-list { flex: 1 1 auto; overflow-y: auto; display: flex; flex-direction: column; gap: 0.6em; }
+.pdf-plus-ai-ask { display: flex; flex-direction: column; gap: 0.3em; border-top: 1px solid var(--background-modifier-border); padding-top: 0.4em; }
+.pdf-plus-ai-ask-input { resize: vertical; }
+.pdf-plus-ai-footer { font-size: var(--font-ui-smaller); padding-top: 0.3em; border-top: 1px solid var(--background-modifier-border); }
+
+.pdf-plus-ai-block { border: 1px solid var(--background-modifier-border); border-radius: 6px; padding: 0.6em; background: var(--background-secondary); }
+.pdf-plus-ai-block.is-error { border-color: var(--text-error); }
+.pdf-plus-ai-block-meta { font-size: var(--font-ui-smaller); color: var(--text-muted); margin-bottom: 0.3em; }
+.pdf-plus-ai-block-body { font-size: var(--font-text-size); }
+.pdf-plus-ai-block-body p:first-child { margin-top: 0; }
+.pdf-plus-ai-block-body p:last-child { margin-bottom: 0; }
+.pdf-plus-ai-block-footer { display: flex; gap: 0.3em; margin-top: 0.4em; flex-wrap: wrap; }
+.pdf-plus-ai-spinner { color: var(--text-muted); font-style: italic; }
+
+.pdf-plus-ai-btn { background: var(--background-modifier-form-field); border: 1px solid var(--background-modifier-border); border-radius: 4px; padding: 0.15em 0.5em; font-size: var(--font-ui-small); cursor: pointer; }
+.pdf-plus-ai-btn:hover { background: var(--background-modifier-hover); }
+.pdf-plus-ai-btn-primary { background: var(--interactive-accent); color: var(--text-on-accent); border-color: var(--interactive-accent); }
+.pdf-plus-ai-btn-primary:hover { background: var(--interactive-accent-hover); }
+.pdf-plus-ai-cmds-btn { display: inline-flex; align-items: center; gap: 0.3em; }
+.pdf-plus-ai-cmds-btn svg { width: var(--icon-s); height: var(--icon-s); }
+
+.pdf-plus-ai-muted { color: var(--text-muted); }
+.pdf-plus-ai-error { color: var(--text-error); }
+
+/* review modal (F5) */
+.pdf-plus-ai-review-list { max-height: 60vh; overflow-y: auto; display: flex; flex-direction: column; gap: 0.5em; }
+.pdf-plus-ai-review-row { display: flex; gap: 0.5em; align-items: flex-start; border-left: 3px solid var(--pdf-plus-ai-cat-color, var(--interactive-accent)); padding-left: 0.5em; }
+.pdf-plus-ai-review-body { flex: 1; }
+.pdf-plus-ai-cat { font-size: var(--font-ui-smaller); text-transform: uppercase; letter-spacing: 0.04em; color: var(--pdf-plus-ai-cat-color, var(--text-muted)); }
+.pdf-plus-ai-quote { margin: 0.2em 0; padding: 0.2em 0.5em; border-left: 2px solid var(--background-modifier-border); }
+.pdf-plus-ai-warn { color: var(--text-warning); font-size: var(--font-ui-smaller); }
+
+/* references panel (F6) */
+.pdf-plus-ai-ref-row { display: flex; gap: 0.5em; padding: 0.4em 0; border-bottom: 1px solid var(--background-modifier-border); }
+.pdf-plus-ai-ref-main { flex: 1; min-width: 0; }
+.pdf-plus-ai-ref-title { font-weight: 600; }
+.pdf-plus-ai-ref-meta { font-size: var(--font-ui-smaller); }
+.pdf-plus-ai-ref-side { display: flex; flex-direction: column; align-items: flex-end; gap: 0.2em; }
+.pdf-plus-ai-cite-badge { background: var(--interactive-accent); color: var(--text-on-accent); border-radius: 10px; padding: 0 0.5em; font-weight: 600; font-size: var(--font-ui-smaller); }
+.pdf-plus-ai-ref-src { font-size: var(--font-ui-smallest); color: var(--text-muted); }
+.pdf-plus-ai-ref-actions { display: flex; gap: 0.3em; margin-top: 0.2em; }
+
+/* progress modal (F3) */
+.pdf-plus-ai-progress-status { margin-bottom: 0.5em; }
+.pdf-plus-ai-progress-bar { height: 6px; background: var(--background-modifier-border); border-radius: 3px; overflow: hidden; }
+.pdf-plus-ai-progress-fill { height: 100%; background: var(--interactive-accent); width: 0%; transition: width 0.3s ease; }
+.pdf-plus-ai-modal-footer { margin-top: 0.8em; display: flex; gap: 0.4em; justify-content: flex-end; }

@@ -14,6 +14,8 @@ import { InstallerVersionModal } from 'modals';
 import { PDFExternalLinkPostProcessor, PDFInternalLinkPostProcessor, PDFOutlineItemPostProcessor, PDFThumbnailItemPostProcessor } from 'post-process';
 import { BibliographyManager } from 'bib';
 import { DataviewInlineFieldsModal, withFilesWithInlineFields } from 'lib/dataview';
+import { AIManager } from 'ai';
+import { migrateAISettings } from 'ai/settings';
 
 
 export default class PDFPlus extends Plugin {
@@ -26,6 +28,8 @@ export default class PDFPlus extends Plugin {
 	events: Events = new Events();
 	/** Manages DOMs and event handlers introduced by this plugin. */
 	domManager: DomManager;
+	/** The AI module (MiniMax). Always instantiated; activates UI only when settings.ai.aiEnabled. See src/ai/. */
+	ai: AIManager;
 	/** When loaded, just selecting a range of text in a PDF viewer will run the `copy-link-to-selection` command. */
 	autoCopyMode: AutoCopyMode;
 	/** A ribbon icon to toggle auto-focus mode */
@@ -100,6 +104,8 @@ export default class PDFPlus extends Plugin {
 
 		this.domManager = this.addChild(new DomManager(this));
 		this.domManager.registerCalloutRenderer();
+
+		this.ai = this.addChild(new AIManager(this));
 
 		this.registerRibbonIcons();
 
@@ -188,6 +194,9 @@ export default class PDFPlus extends Plugin {
 
 	async loadSettings() {
 		this.settings = Object.assign(this.getDefaultSettings(), await this.loadData());
+
+		// Migrate/repair the AI settings slice (absence of the block = AI disabled).
+		this.settings.ai = migrateAISettings(this.settings.ai as any);
 
 		this.setCitationIdRegex();
 

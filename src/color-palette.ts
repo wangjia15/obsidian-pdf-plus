@@ -478,10 +478,9 @@ export class ColorPalette extends PDFPlusComponent {
 
             const pageView = child.getPage(+pageNumber);
 
-            // Compute the top-left corner of the selection box
-            const { x, y } = getEventCoords(evt);
-            selectBox.left = x;
-            selectBox.top = y;
+            // Anchor point (where the drag started); the box is drawn between this and the
+            // current pointer position, so dragging in any of the four directions works.
+            const { x: anchorX, y: anchorY } = getEventCoords(evt);
 
             // Display the selection box
             const boxEl = pageEl.createDiv('pdf-plus-select-box');
@@ -492,20 +491,32 @@ export class ColorPalette extends PDFPlusComponent {
             const paddingTop = parseFloat(style.paddingTop);
             const paddingLeft = parseFloat(style.paddingLeft);
 
+            selectBox.left = anchorX;
+            selectBox.top = anchorY;
             boxEl.setCssStyles({
                 left: (selectBox.left - (pageRect.left + borderLeft + paddingLeft)) + 'px',
                 top: (selectBox.top - (pageRect.top + borderTop + paddingTop)) + 'px',
             });
 
             const onPointerMove = (evt: PointerEvent | TouchEvent) => {
-                // Update the bottom-right corner of the selection box
+                // Normalize so the box always spans (min, min) to (max, max), regardless of
+                // which direction the pointer is dragged relative to the anchor.
                 const { x, y } = getEventCoords(evt);
                 const newPageRect = pageEl.getBoundingClientRect();
-                // `- (newPageRect.(left|top) - pageRect.(left|top))` is to account for the page's scroll position changing during the drag
-                selectBox.width = x - selectBox.left - (newPageRect.left - pageRect.left);
-                selectBox.height = y - selectBox.top - (newPageRect.top - pageRect.top);
+                // `- (newPageRect.(left|top) - pageRect.(left|top))` is to account for the page's scroll position changing during the drag.
+                // Only the *current* point needs this correction — the anchor was captured at
+                // pointerdown time, when `pageRect` was current, so it's already in that frame.
+                const curX = x - (newPageRect.left - pageRect.left);
+                const curY = y - (newPageRect.top - pageRect.top);
+
+                selectBox.left = Math.min(anchorX, curX);
+                selectBox.top = Math.min(anchorY, curY);
+                selectBox.width = Math.abs(curX - anchorX);
+                selectBox.height = Math.abs(curY - anchorY);
 
                 boxEl.setCssStyles({
+                    left: (selectBox.left - (pageRect.left + borderLeft + paddingLeft)) + 'px',
+                    top: (selectBox.top - (pageRect.top + borderTop + paddingTop)) + 'px',
                     width: selectBox.width + 'px',
                     height: selectBox.height + 'px',
                 });

@@ -9,6 +9,7 @@ import { ScrollMode, SidebarView, SpreadMode } from 'pdfjs-enums';
 import { Menu } from 'obsidian';
 import { PDFExternalLinkPostProcessor, PDFInternalLinkPostProcessor, PDFOutlineItemPostProcessor, PDFThumbnailItemPostProcessor } from 'post-process';
 import { BibliographyManager } from 'bib';
+import { DEFAULT_AI_SETTINGS, renderAISettingsSection } from 'ai/settings';
 
 
 const SELECTION_BACKLINK_VISUALIZE_STYLE = {
@@ -308,6 +309,8 @@ export interface PDFPlusSettings {
 	PATH: string;
 	autoCheckForUpdates: boolean;
 	fixObsidianTextSelectionBug: boolean;
+	/** PDF++ AI module settings (MiniMax). Absence = AI disabled. See src/ai/settings.ts. */
+	ai: import('./ai/settings').AISettings;
 }
 
 export const DEFAULT_SETTINGS: PDFPlusSettings = {
@@ -595,6 +598,7 @@ export const DEFAULT_SETTINGS: PDFPlusSettings = {
 	PATH: '',
 	autoCheckForUpdates: true,
 	fixObsidianTextSelectionBug: true,
+	ai: DEFAULT_AI_SETTINGS,
 };
 
 
@@ -3379,6 +3383,8 @@ export class PDFPlusSettingTab extends PluginSettingTab {
 				.setDesc('Provide the "PATH" environment variable for PDF++ to run shell commands without the full paths specified. In MacOS and Linux, you can run "echo $PATH" in Terminal and then copy & paste the result here. Currently, it will be used only when you run ":!<command>" in Vim mode.');
 		}
 
+
+		renderAISettingsSection(this.plugin, this);
 
 		this.addHeading('Style settings', 'style-settings', 'lucide-settings-2')
 			.setDesc('You can find more options in Style Settings > PDF++.')
