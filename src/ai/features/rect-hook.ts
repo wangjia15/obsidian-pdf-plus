@@ -11,6 +11,7 @@ import { around } from 'monkey-around';
 import PDFPlus from 'main';
 import { copyLinkLib } from 'lib/copy-link';
 import { Rect } from 'typings';
+import { showRegionMarker } from './region-marker';
 
 export interface CroppedRect {
     file: string;
@@ -33,12 +34,14 @@ export function registerRectHook(plugin: PDFPlus) {
                     // Only capture on the actual copy (not the checking=true probe), on success,
                     // and only when the AI module is on.
                     if (!checking && ret !== false && plugin.settings.ai?.aiEnabled && child?.file?.path && Array.isArray(rect)) {
+                        const croppedRect: Rect = [...rect] as Rect;
                         plugin.ai.lastCroppedRect = {
                             file: child.file.path,
                             pageNumber,
-                            rect: [...rect] as Rect,
+                            rect: croppedRect,
                         };
-                        new Notice('PDF++ AI: region copied. Command palette → "PDF++ AI: Analyze last cropped region".', 6000);
+                        showRegionMarker(plugin, child.file.path, pageNumber, croppedRect);
+                        new Notice('PDF++ AI: region marked — click the highlighted box on the page to analyze it.', 5000);
                     }
                 } catch {
                     /* never let the hook break the original copy */

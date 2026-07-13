@@ -44,6 +44,14 @@ export class AutoAnnotationReviewModal extends PDFPlusModal {
             const color = this.plugin.settings.ai.annotation.categoryColors[p.category] ?? 'yellow';
             body.createEl('span', { cls: 'pdf-plus-ai-cat', attr: { 'data-cat': p.category }, text: p.category });
             body.createEl('blockquote', { text: p.quote, cls: 'pdf-plus-ai-quote' });
+            // Show what was actually anchored in the PDF so the reviewer can verify the model's
+            // quote matches real text (guards against silent prefix-fallback mismatches).
+            if (p.located) {
+                body.createEl('div', { cls: 'pdf-plus-ai-matched', text: `In PDF: “${p.located.matchedText}”` });
+                if (p.located.fuzzy) {
+                    body.createEl('div', { text: '⚠ fuzzy match — only the opening of this quote was located; verify before writing.', cls: 'pdf-plus-ai-warn' });
+                }
+            }
             if (p.comment) body.createEl('em', { text: p.comment, cls: 'pdf-plus-ai-muted' });
             if (!p.located) body.createEl('div', { text: '⚠ not located — skipped', cls: 'pdf-plus-ai-warn' });
 

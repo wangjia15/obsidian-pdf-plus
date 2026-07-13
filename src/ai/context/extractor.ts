@@ -12,12 +12,10 @@ import PDFPlus from 'main';
 type PdfTextItem = { str?: string; hasEOL?: boolean };
 
 export interface ExtractedItem {
-    /** index of this item within its page's text-content array */
-    index: number;
+    /** The text of this pdfjs text-content item. (Per-item begin/end offsets were removed —
+     *  they were computed against the un-cleaned text and never read; quote-locator rebuilds
+     *  offsets from items[].str directly, so this is the only field anyone consumes.) */
     str: string;
-    /** begin/end char offsets within the page's assembled text */
-    begin: number;
-    end: number;
 }
 
 export interface ExtractedPage {
@@ -56,13 +54,11 @@ export async function extractPDFText(plugin: PDFPlus, file: TFile): Promise<Extr
             const it = content.items[i] as PdfTextItem;
             const str = it.str ?? '';
             if (!str) continue;
-            const begin = text.length;
             text += str;
             // pdfjs inserts explicit spaces between items via the 'hasEOL'/'str' " " markers;
             // join items with a space when neither side ends/starts with whitespace.
             if (i < content.items.length - 1 && !/\s$/.test(str)) text += ' ';
-            const end = text.length;
-            items.push({ index: i, str, begin, end });
+            items.push({ str });
         }
         const clean = text.replace(/[ \t]+\n/g, '\n').trim();
         pages.push({ pageNumber: n, text: clean, items });

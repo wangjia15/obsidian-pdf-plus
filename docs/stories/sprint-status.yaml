@@ -1,0 +1,73 @@
+# generated: 2026-07-06
+# last_updated: 2026-07-06
+# project: obsidian-pdf-plus
+# project_key: NOKEY
+# tracking_system: file-system
+# story_location: docs/stories
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Epic Status Transitions:
+#   - backlog -> in-progress: Automatically when first story is created (via create-story)
+#   - in-progress -> done: Manually when all stories reach 'done' status
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created in stories folder
+#   - in-progress: Developer actively working on implementation
+#   - review: Ready for code review (via Dev's code-review workflow)
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+#
+# Action Item Status:
+#   - open: Committed during a retrospective, not yet addressed
+#   - in-progress: Actively being worked on
+#   - done: Completed
+#
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when first story is created
+# - Stories can be worked in parallel if team capacity allows
+# - Developer typically creates next story after previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+# - Retrospective appends its action items to action_items; sprint-status surfaces open ones
+
+generated: 2026-07-06
+last_updated: 2026-07-06
+project: obsidian-pdf-plus
+project_key: NOKEY
+tracking_system: file-system
+story_location: docs/stories
+
+development_status:
+  # Epic 1: M1 — AI Core & Settings Foundation
+  epic-1: done
+  1-1-settings-provider-management: done
+  1-2-paper-understanding-chat-sidebar: done
+  epic-1-retrospective: optional
+
+  # Epic 2: M2 — Voice Output & Figure Parsing
+  epic-2: done
+  2-1-voice-output-ai-content: done
+  2-2-image-figure-parsing: done
+  epic-2-retrospective: optional
+
+  # Epic 3: M3 — Auto-Annotation & Citation Enrichment
+  epic-3: done
+  3-1-auto-annotation-papers: done
+  3-2-references-citation-counts: done
+  epic-3-retrospective: optional
+
+  # Epic 4: M4 — Podcast & Knowledge Maps (Beta)
+  epic-4: done
+  4-1-podcast-generation-pdf: done
+  4-2-canvas-graph-knowledge-maps: done
+  epic-4-retrospective: optional

@@ -20,6 +20,8 @@ export class OutputBlock extends Component {
     meta: OutputBlockMeta;
     private rawText = '';
     private status: 'streaming' | 'done' | 'error' = 'streaming';
+    /** Pending requestAnimationFrame id for coalesced streaming writes, or undefined when idle. */
+    private rafId: number | undefined;
 
     /** Speak callback (defaults to MiniMax TTS with obsidian-tts fallback). */
     speak: (text: string) => void = (text) => { speakText(this.plugin, text); };
@@ -72,19 +74,20 @@ export class OutputBlock extends Component {
         await MarkdownRenderer.render(this.plugin.app, md, this.bodyEl, this.meta.sourcePath ?? '', this);
     }
 
-    /** Stream-friendly: append a delta and re-render. */
-    async appendDelta(delta: string, full: string) {
+    /** Stream-friendly: append a delta. DOM writes are coalesced to one per animation frame so
+     *  high-frequency SSE deltas don't thrash layout; the final markdown render happens in setDone. */
+    appendDelta(_delta: string, full: string) {
         this.rawText = full;
-        // Re-rendering markdown on every delta is expensive; throttle by only re-rendering
-        // at most ~8/sec. For simplicity we render the full accumulated text each call;
-        // callers may instead call setMarkdown once on completion.
-        this.bodyEl.empty();
-        this.bodyEl.setText(full);
-        if (delta === '\n') { /* no-op */ }
+        if (this.rafId !== undefined) return;
+        this.rafId = requestAnimationFrame(() => {
+            this.rafId = undefined;
+            if (this.status === 'streaming') { this.bodyEl.empty(); this.bodyEl.setText(this.rawText); }
+        });
     }
 
     setDone() {
         this.status = 'done';
+        this.cancelRaf();
         this.containerEl.removeClass('is-streaming');
         // Final markdown render (turns raw text into rendered MD with links).
         MarkdownRenderer.render(this.plugin.app, this.rawText, this.bodyEl, this.meta.sourcePath ?? '', this);
@@ -92,10 +95,20 @@ export class OutputBlock extends Component {
 
     setError(message: string) {
         this.status = 'error';
+        this.cancelRaf();
         this.containerEl.removeClass('is-streaming');
         this.containerEl.addClass('is-error');
         this.bodyEl.empty();
         this.bodyEl.createDiv({ cls: 'pdf-plus-ai-error', text: message });
+    }
+
+    private cancelRaf() {
+        if (this.rafId !== undefined) { cancelAnimationFrame(this.rafId); this.rafId = undefined; }
+    }
+
+    onunload() {
+        this.cancelRaf();
+        super.onunload();
     }
 
     private insertIntoNote() {

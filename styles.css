@@ -746,3 +746,50 @@ body.pdf-plus-vim-hint-inverted {
 .pdf-plus-ai-progress-bar { height: 6px; background: var(--background-modifier-border); border-radius: 3px; overflow: hidden; }
 .pdf-plus-ai-progress-fill { height: 100%; background: var(--interactive-accent); width: 0%; transition: width 0.3s ease; }
 .pdf-plus-ai-modal-footer { margin-top: 0.8em; display: flex; gap: 0.4em; justify-content: flex-end; }
+
+/* region marker (F2 — persistent, clickable border on a cropped figure) */
+.pdf-plus-ai-region-marker {
+    position: absolute;
+    z-index: 999;
+    box-sizing: border-box;
+    border: 2px solid var(--interactive-accent);
+    background-color: hsla(var(--interactive-accent-hsl), 0.12);
+    border-radius: 2px;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+}
+.pdf-plus-ai-region-marker:hover {
+    background-color: hsla(var(--interactive-accent-hsl), 0.25);
+}
+.pdf-plus-ai-region-marker-btn {
+    position: absolute;
+    top: -14px;
+    left: -2px;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: var(--interactive-accent);
+    color: var(--text-on-accent);
+    border-radius: var(--radius-s);
+    pointer-events: none; /* the marker itself handles the click */
+}
+.pdf-plus-ai-region-marker-close {
+    position: absolute;
+    top: -14px;
+    right: -2px;
+    width: 18px;
+    height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: var(--background-primary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 50%;
+    cursor: pointer;
+    z-index: 1;
+}
+.pdf-plus-ai-region-marker-close:hover {
+    background-color: var(--background-modifier-error);
+}

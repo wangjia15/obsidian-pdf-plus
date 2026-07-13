@@ -134,11 +134,19 @@ export async function synthesizeAudioAction(plugin: PDFPlus): Promise<PodcastMan
 		const startedAt = Date.now();
 		try {
 			const synthP = client.synthesize(entry.text, { voice: entry.voice, rate: manifest.rate, model: manifest.model, signal: ac.signal });
-			const timeoutP = new Promise<never>((_, reject) => setTimeout(
-				() => reject(new Error(`Part ${entry.index} timed out after ${PER_PART_TIMEOUT_MS / 1000}s waiting on MiniMax — re-run "Synthesize audio" to retry.`)),
-				PER_PART_TIMEOUT_MS,
-			));
-			const buf = await Promise.race([synthP, timeoutP]);
+			const timeoutMsg = `Part ${entry.index} timed out after ${PER_PART_TIMEOUT_MS / 1000}s waiting on MiniMax — re-run "Synthesize audio" to retry.`;
+			// Arm the timer inside the Promise executor so its reject closes over the real reject;
+			// capture the handle so the finally can clear it on normal completion.
+			let handle: ReturnType<typeof setTimeout> | undefined;
+			const timeoutP = new Promise<never>((_, reject) => {
+				handle = setTimeout(() => reject(new Error(timeoutMsg)), PER_PART_TIMEOUT_MS);
+			});
+			let buf: ArrayBuffer;
+			try {
+				buf = await Promise.race([synthP, timeoutP]);
+			} finally {
+				clearTimeout(handle);
+			}
 
 			const abs = normalizePath(partAbsPath(plugin, file, entry.partFile));
 			const existing = plugin.app.vault.getAbstractFileByPath(abs);

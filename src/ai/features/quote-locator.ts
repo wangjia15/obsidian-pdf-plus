@@ -14,6 +14,13 @@ export interface Located {
     beginOffset: number;   // char offset within items[beginIndex].str
     endIndex: number;
     endOffset: number;     // exclusive-ish: slice(0, endOffset) covers the matched span
+    /** True when the match came from a prefix fallback, not an exact normalized hit. A fuzzy
+     *  match anchors only the quote's *opening* against real text, so the tail is unverified —
+     *  downstream UI must surface it for human confirmation (don't silently trust it). */
+    fuzzy: boolean;
+    /** The actual text in the PDF that this location spans, so reviewers can compare it against
+     *  the model's quoted text. */
+    matchedText: string;
 }
 
 interface Pos { itemIdx: number; offsetInItem: number; }
@@ -89,13 +96,15 @@ function locateInPage(pi: PageIndex, q: string): Omit<Located, 'page'> | null {
     // 1. exact normalized match
     let start = pi.searchText.indexOf(q);
     let matchLen = q.length;
+    let fuzzy = false;
     if (start < 0) {
-        // 2. prefix fallbacks for truncated quotes
+        // 2. prefix fallbacks for truncated (or subtly-mismatched) quotes. A prefix hit anchors
+        // only the quote's opening against real text, so mark it fuzzy for human confirmation.
         for (const plen of [60, 45, 30, 20]) {
             if (q.length <= plen) continue;
             const prefix = q.slice(0, plen);
             const at = pi.searchText.indexOf(prefix);
-            if (at >= 0) { start = at; matchLen = prefix.length; break; }
+            if (at >= 0) { start = at; matchLen = prefix.length; fuzzy = true; break; }
         }
     }
     if (start < 0) return null;
@@ -108,10 +117,24 @@ function locateInPage(pi: PageIndex, q: string): Omit<Located, 'page'> | null {
 
     const startPos = pi.posMap[start];
     const endPos = pi.posMap[end];
+    const matchedText = textBetween(pi.page, startPos.itemIdx, startPos.offsetInItem, endPos.itemIdx, endPos.offsetInItem);
     return {
         beginIndex: startPos.itemIdx,
         beginOffset: startPos.offsetInItem,
         endIndex: endPos.itemIdx,
         endOffset: endPos.offsetInItem + 1,
+        fuzzy,
+        matchedText,
     };
+}
+
+/** Reconstruct the original (un-normalized) PDF text a selection range spans, so the review
+ *  UI can show the user exactly what got anchored. */
+function textBetween(page: ExtractedPage, beginIndex: number, beginOffset: number, endIndex: number, endOffset: number): string {
+    const items = page.items;
+    if (beginIndex === endIndex) return items[beginIndex]?.str.slice(beginOffset, endOffset + 1) ?? '';
+    const parts: string[] = [items[beginIndex]?.str.slice(beginOffset) ?? ''];
+    for (let i = beginIndex + 1; i < endIndex; i++) parts.push(items[i]?.str ?? '');
+    parts.push(items[endIndex]?.str.slice(0, endOffset + 1) ?? '');
+    return parts.join(' ');
 }

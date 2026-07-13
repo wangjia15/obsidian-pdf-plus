@@ -15,6 +15,7 @@ import { registerAIView, getOrCreateAISidebar, closeAISidebars } from './ui/side
 import { registerAICommands } from './features/commands';
 import { registerAIContextMenu } from './ui/context-menu';
 import { registerRectHook, CroppedRect } from './features/rect-hook';
+import { clearRegionMarker } from './features/region-marker';
 
 export class AIManager extends Component {
     plugin: PDFPlus;
@@ -63,6 +64,7 @@ export class AIManager extends Component {
         this.removeChild(this.active);
         this.active = null;
         closeAISidebars(this.plugin);
+        clearRegionMarker();
     }
 
     /** Toggle live, called by the settings master switch. */

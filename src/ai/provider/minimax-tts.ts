@@ -10,7 +10,7 @@
 import { requestUrl } from 'obsidian';
 import PDFPlus from 'main';
 import { AISettings } from '../settings';
-import { AIError, normalizeError } from './types';
+import { AIError, normalizeError, redactSecrets } from './types';
 import { withRetry } from './ratelimit';
 
 export interface TTSSynthesizeOptions {
@@ -84,10 +84,12 @@ export function getSharedTTSClient(plugin: PDFPlus): MiniMaxTTSClient {
 
 function trimSlash(s: string) { return s.replace(/\/+$/, ''); }
 
-function makeErr(json: any, status: number): AIError {
-    const msg = json?.base_resp?.status_msg || JSON.stringify(json);
-    const kind = normalizeError({ status, json }).kind;
-    return new AIError(kind, msg, { retryable: status === 429 || (status >= 500 && status < 600), status });
+function makeErr(json: unknown, status: number): AIError {
+    const env = typeof json === 'object' && json !== null ? (json as Record<string, unknown>) : null;
+    const baseResp = env && typeof env.base_resp === 'object' && env.base_resp !== null ? (env.base_resp as Record<string, unknown>) : null;
+    const msg = typeof baseResp?.status_msg === 'string' ? baseResp.status_msg : JSON.stringify(json);
+    const kind = normalizeError({ status, json: env }).kind;
+    return new AIError(kind, redactSecrets(msg), { retryable: status === 429 || (status >= 500 && status < 600), status });
 }
 
 /** Decode a hex string into an ArrayBuffer. */

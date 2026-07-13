@@ -13,7 +13,7 @@
 import { Notice, requestUrl } from 'obsidian';
 import PDFPlus from 'main';
 import { AISettings } from '../settings';
-import { ChatRequest, ChatResponse, ChatStreamHandle, AIError, normalizeError } from './types';
+import { ChatRequest, ChatResponse, ChatStreamHandle, AIError, normalizeError, redactSecrets } from './types';
 import { withRetry } from './ratelimit';
 
 /** Lazy singleton chat client bound to the plugin's live AI settings. */
@@ -72,7 +72,7 @@ export class MiniMaxChatClient {
 
     /** Non-streaming chat completion. Works on all platforms via requestUrl. */
     async chat(req: ChatRequest): Promise<ChatResponse> {
-        const res = await withRetry('chat', async () => {
+        const res = await withRetry(req.capability ?? 'chat', async () => {
             const r = await requestUrl({
                 url: this.chatUrl,
                 method: 'POST',
@@ -124,14 +124,23 @@ export class MiniMaxChatClient {
                 throw makeErr(json, resp.status);
             }
             let usage: ChatResponse['usage'] = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
-            await readSSE(resp.body, (data) => {
-                if (data === '[DONE]' || cancelRequested) return;
-                let evt: any;
-                try { evt = JSON.parse(data); } catch { return; }
-                const delta: string = evt?.choices?.[0]?.delta?.content ?? '';
-                if (delta) { partial += delta; onDelta(delta); }
-                if (evt?.usage) usage = parseUsage(evt.usage);
-            });
+            try {
+                await readSSE(resp.body, (data) => {
+                    if (data === '[DONE]' || cancelRequested) return;
+                    let evt: unknown;
+                    try { evt = JSON.parse(data); } catch { return; }
+                    if (!isChatStreamEvent(evt)) return;
+                    const delta: string = evt.choices?.[0]?.delta?.content ?? '';
+                    if (delta) { partial += delta; onDelta(delta); }
+                    if (evt.usage !== undefined && evt.usage !== null) usage = parseUsage(evt.usage);
+                });
+            } catch (e) {
+                // Aborted or errored mid-stream — still account for the tokens already produced,
+                // so the monthly budget isn't systematically under-counted on cancellation.
+                if (usage.completionTokens === 0) usage = { ...usage, completionTokens: Math.ceil(partial.length / 4) };
+                this.cfg.onUsage?.(usage);
+                throw e;
+            }
             const result: ChatResponse = { text: partial, usage, raw: null };
             this.cfg.onUsage?.(usage);
             return result;
@@ -156,19 +165,35 @@ export class MiniMaxChatClient {
     }
 }
 
-function parseUsage(u: any): ChatResponse['usage'] {
-    return {
-        promptTokens: u?.prompt_tokens ?? u?.total_tokens ?? 0,
-        completionTokens: u?.completion_tokens ?? 0,
-        totalTokens: u?.total_tokens ?? 0,
-    };
+/** Narrow a parsed SSE data line to the OpenAI-compatible event shape (field reads only). */
+interface ChatStreamEvent {
+    choices?: Array<{ delta?: { content?: string } }>;
+    usage?: unknown;
+}
+function isChatStreamEvent(v: unknown): v is ChatStreamEvent {
+    return typeof v === 'object' && v !== null;
+}
+
+function parseUsage(u: unknown): ChatResponse['usage'] {
+    const zero: ChatResponse['usage'] = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+    if (typeof u !== 'object' || u === null) return zero;
+    const o = u as Record<string, unknown>;
+    const pt = typeof o.prompt_tokens === 'number' ? o.prompt_tokens : 0;
+    const ct = typeof o.completion_tokens === 'number' ? o.completion_tokens : 0;
+    const tt = typeof o.total_tokens === 'number' ? o.total_tokens : 0;
+    return { promptTokens: pt || tt, completionTokens: ct, totalTokens: tt };
 }
 
 function trimSlash(s: string): string { return s.replace(/\/+$/, ''); }
 
-function makeErr(json: any, status: number): AIError {
-    const msg = json?.base_resp?.status_msg || json?.error?.message || JSON.stringify(json);
-    return new AIError(normalizeError({ status, json }).kind, msg, { retryable: status === 429 || (status >= 500 && status < 600), status });
+function makeErr(json: unknown, status: number): AIError {
+    const env = typeof json === 'object' && json !== null ? (json as Record<string, unknown>) : null;
+    const baseResp = env && typeof env.base_resp === 'object' && env.base_resp !== null ? (env.base_resp as Record<string, unknown>) : null;
+    const errObj = env && typeof env.error === 'object' && env.error !== null ? (env.error as Record<string, unknown>) : null;
+    const msg = (typeof baseResp?.status_msg === 'string' ? baseResp.status_msg : undefined)
+        ?? (typeof errObj?.message === 'string' ? errObj.message : undefined)
+        ?? JSON.stringify(json);
+    return new AIError(normalizeError({ status, json: env }).kind, redactSecrets(msg), { retryable: status === 429 || (status >= 500 && status < 600), status });
 }
 
 /** Minimal SSE reader: invokes onData with the payload of each `data:` line. */
@@ -176,20 +201,27 @@ async function readSSE(body: ReadableStream<Uint8Array>, onData: (data: string) 
     const reader = body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
-    while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        let idx: number;
-        while ((idx = buffer.indexOf('\n')) >= 0) {
-            let line = buffer.slice(0, idx);
-            buffer = buffer.slice(idx + 1);
-            line = line.replace(/\r$/, '');
-            if (line.startsWith('data:')) {
-                const data = line.slice(5).trim();
-                if (data) onData(data);
+    try {
+        while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            let idx: number;
+            while ((idx = buffer.indexOf('\n')) >= 0) {
+                let line = buffer.slice(0, idx);
+                buffer = buffer.slice(idx + 1);
+                line = line.replace(/\r$/, '');
+                if (line.startsWith('data:')) {
+                    const data = line.slice(5).trim();
+                    if (data) onData(data);
+                }
             }
         }
+    } finally {
+        // Release the reader lock and cancel the body on any exit (incl. abort) so a halted
+        // stream doesn't hold the ReadableStream's only reader.
+        try { await reader.cancel(); } catch { /* already closed */ }
+        reader.releaseLock();
     }
 }
 

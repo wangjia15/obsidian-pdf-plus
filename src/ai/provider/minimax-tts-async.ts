@@ -13,7 +13,7 @@
 import { requestUrl } from 'obsidian';
 import PDFPlus from 'main';
 import { AISettings } from '../settings';
-import { AIError, normalizeError } from './types';
+import { AIError, normalizeError, redactSecrets } from './types';
 import { getLimiter } from './ratelimit';
 
 const PATH_SUBMIT = '/v1/t2a_async';
@@ -100,9 +100,11 @@ export function getSharedAsyncTTSClient(plugin: PDFPlus): MiniMaxAsyncTTSClient 
 }
 
 function trimSlash(s: string) { return s.replace(/\/+$/, ''); }
-function makeErr(json: any, status: number): AIError {
-    const msg = json?.base_resp?.status_msg || JSON.stringify(json);
-    return new AIError(normalizeError({ status, json }).kind, msg, { retryable: status === 429 || status >= 500, status });
+function makeErr(json: unknown, status: number): AIError {
+    const env = typeof json === 'object' && json !== null ? (json as Record<string, unknown>) : null;
+    const baseResp = env && typeof env.base_resp === 'object' && env.base_resp !== null ? (env.base_resp as Record<string, unknown>) : null;
+    const msg = typeof baseResp?.status_msg === 'string' ? baseResp.status_msg : JSON.stringify(json);
+    return new AIError(normalizeError({ status, json: env }).kind, redactSecrets(msg), { retryable: status === 429 || status >= 500, status });
 }
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
     return new Promise((resolve, reject) => {
