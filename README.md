@@ -14,6 +14,8 @@ This is an [Obsidian.md](https://obsidian.md) plugin for a better PDF experience
 - Alternatively, you can add annotations directly into PDF files so that they are also visible outside Obsidian (but with limitations; see [here](#note-on-saving-annotations-directly-in-pdf)).
 - Moreover, it adds many **quality-of-life improvements** to the built-in PDF viewer and PDF embeds. So it's useful even if you don't use it as an annotation tool (you can even turn off the annotation functionality!).
 
+> 🔬 **Experimental AI module** (MiniMax-M3 + TTS) for academic-paper workflows — summarize, explain/translate selections, parse figures, auto-annotate, enrich references, generate podcasts & knowledge maps. Off by default; see the **AI 模块（实验性）** section below or the [full guide](docs/AI-USER-GUIDE.md).
+
 PDF++ stands out among other PDF annotation tools for the following reasons:
 
 - PDF++ acts as **a complement to Obsidian's native PDF viewer rather than replacing it**. It allows you to make sidenotes as **pure markdown**, so you will not lose your annotations even if the plugin stops working as long as Obsidian is alive. It will not leave behind a pile of unreadable JSON even if this plugin stops working in the future, unlike [Annotator](https://github.com/elias-sundqvist/obsidian-annotator).
@@ -98,6 +100,48 @@ https://github.com/RyotaUshio/obsidian-pdf-plus/assets/72342591/4147e634-7864-40
 ### "Hover sync" between PDF viewer & backlinks pane
 
 https://github.com/RyotaUshio/obsidian-pdf-plus/assets/72342591/2285a837-0588-4a72-8193-da25a456bf84
+
+## AI 模块（实验性）
+
+> 本仓库在上游 PDF++ 基础上增加了一个 **AI 模块**，面向学术论文阅读工作流，由 **MiniMax-M3**（对话 / 视觉）+ MiniMax TTS 驱动。模块 **默认完全关闭**（`aiEnabled: false`），不启用时 PDF++ 的其余功能不受任何影响。完整操作手册见 [docs/AI-USER-GUIDE.md](docs/AI-USER-GUIDE.md)，技术设计见 [AI-PRD.md](docs/AI-PRD.md) / [AI-ARCHITECTURE.md](docs/AI-ARCHITECTURE.md)。
+
+### 能做什么
+
+所有命令在命令面板里都以 `PDF++ AI:` 开头；选中 PDF 文字后右键（需在设置里开启「替换内置右键菜单」）还会出现 **AI: Explain / Summarize / Translate / Ask…** 快捷入口。
+
+| 分组 | 命令 | 说明 |
+| --- | --- | --- |
+| 阅读理解 | Summarize paper | 整篇论文结构化摘要（研究问题 / 方法 / 结果 / 局限），流式输出 |
+| 阅读理解 | Explain / Summarize / Translate selection | 划词解释、概括、翻译 |
+| 阅读理解 | Ask AI about selection | 针对选区或整篇论文提问 |
+| 图像分析 | Analyze image / Parse all figures | 把页面渲染成图片发给视觉模型，返回文字解读 / Markdown 表格 / LaTeX；`Parse all figures` 扫描全篇并汇总成 `<论文名>.ai.md` |
+| 注释与引用 | Auto-annotate paper | 提取六类关键句（研究问题/方法/关键结果/局限/贡献/定义），定位到 PDF 具体位置，**审核弹窗勾选后才写入**；写入方式可选 Vault-only（伴生笔记）或 Write into PDF |
+| 注释与引用 | Show references panel | 用 Semantic Scholar / Crossref / OpenAlex 富化参考文献（被引次数、DOI、OA 链接、BibTeX） |
+| 播客 | Generate podcast from PDF | 论文 → M3 写讲稿（单人旁白 / 双主播对话，5/15/30 分钟）→ MiniMax TTS 异步合成 → 拼接成 mp3 + 带播放器的伴生笔记 |
+| 知识图谱 | Generate knowledge map | 生成 Canvas 知识图谱或互链笔记（带 `#pdf-plus-ai/*` 标签，便于 Dataview/Bases 聚合） |
+| 工具 | Open AI sidebar / Stop speaking / Toggle AI module | 侧边栏、朗读控制、总开关 |
+
+每个输出块都自带 `Copy / Insert / Speak / Save` 四个按钮；`Speak` 用 MiniMax TTS 朗读该段。
+
+### 三步启用
+
+1. **打开总开关**：`Settings → 第三方插件 → PDF++`，滚到最下方 **「AI (MiniMax) — experimental」** 区块，打开 **Enable AI module**。这一步会立即注册 AI 侧边栏 / 命令 / 右键菜单，**无需重启 Obsidian**。
+2. **同意隐私条款**：打开 **Privacy consent** 开关——这是任何功能调用前的强制前置条件（当前 PDF 的选中文字 / 页面截图会被发送给 MiniMax）。
+3. **配置密钥**：在 **API key** 填入你的 MiniMax Bearer Token，**Group ID** 按需填写。
+   - 国内版 Base URL：`https://api.minimaxi.com`（默认）
+   - 国际版：`https://api.minimax.io`
+   - 填好后点 **Test connection**，出现 `✓` 即密钥可用。
+
+打开侧边栏：命令面板 `Ctrl/Cmd+P` → `PDF++ AI: Open AI sidebar`，或任意一次 AI 操作后自动弹出。
+
+### 隐私与费用
+
+- **仅在你主动触发时**才把内容（选区文字、当前页截图、或整篇提取的正文）发给 MiniMax，没有后台静默上传。
+- **API Key 明文保存在 vault 的 `data.json`**，如果你启用了坚果云 / 远程同步，会一并同步，请自行评估风险。
+- 参考文献增强会向 Semantic Scholar / Crossref / OpenAlex 三个外部公共 API 发起**匿名查询**（仅标题 / 作者 / 年份，不含论文全文），与 MiniMax 无关。
+- 可在设置里设定 **Monthly token budget**（留空 = 无限制）；超额后所有 AI 操作会被 `assertBudget()` 拦截并报错，当月计数在月份切换时自动清零。
+
+> 缓存：相同 PDF + 相同 prompt 版本 + 相同输出语言会命中本地缓存（结果标题带 `(cached)`），不重复计费；缓存位于 `vault/.pdf-plus-ai/`。
 
 ## Features
 
