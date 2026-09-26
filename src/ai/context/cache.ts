@@ -15,6 +15,14 @@ export async function cacheKey(...parts: (string | number)[]): Promise<string> {
     return sha1Hex(parts.map(String).join('|'));
 }
 
+/** Provider/model identity belongs in response keys; credentials never do. */
+export async function providerCacheKey(plugin: PDFPlus, ...parts: (string | number)[]): Promise<string> {
+    const ai = plugin.settings.ai;
+    const provider = ai.chatProvider === 'glm-cn' ? ai.glm : ai.minimax;
+    return cacheKey(ai.chatProvider, provider.baseUrl, provider.chatModel,
+        ai.chatProvider === 'glm-cn' ? ai.glm.visionModel : '', ...parts);
+}
+
 async function ensureDir(plugin: PDFPlus, dir: string): Promise<void> {
     const { vault } = plugin.app;
     if (!(vault.getAbstractFileByPath(dir) instanceof TFile) && vault.getAbstractFileByPath(dir) === null) {

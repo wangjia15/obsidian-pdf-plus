@@ -8,14 +8,16 @@
 import { Notice, TFile } from 'obsidian';
 import PDFPlus from 'main';
 import { getSharedChatClient } from '../provider/minimax-chat';
-import { getCache, cacheKey } from '../context/cache';
+import { getCache, providerCacheKey } from '../context/cache';
 import { extractPDFText, isScanned } from '../context/extractor';
 import { getOrCreateAISidebar } from '../ui/sidebar-view';
 import { summarizePaperPrompt, explainPrompt, summarizeSelectionPrompt, translatePrompt, askPrompt, PROMPT_VERSION } from '../prompts/summarize';
+import { getAutoAnnotationTarget } from './annotation-target';
+import { resolveOutputLanguage } from '../prompts/shared';
 import { AIError, normalizeError } from '../provider/types';
 
 function activePDFFile(plugin: PDFPlus): TFile | null {
-    return plugin.lib.getPDFView()?.file ?? null;
+    return getAutoAnnotationTarget(plugin)?.file ?? null;
 }
 
 function activeSelectionText(plugin: PDFPlus): string {
@@ -26,10 +28,7 @@ function activeSelectionText(plugin: PDFPlus): string {
 }
 
 function resolveLang(plugin: PDFPlus, text: string): 'zh' | 'en' {
-    const ai = plugin.settings.ai.outputLanguage;
-    if (ai === 'zh' || ai === 'en') return ai;
-    // auto: detect CJK
-    return /[一-鿿぀-ヿ]/.test(text.slice(0, 1000)) ? 'zh' : 'en';
+    return resolveOutputLanguage(plugin.settings.ai.outputLanguage, text);
 }
 
 async function requireSidebar(plugin: PDFPlus) {
@@ -47,7 +46,7 @@ async function runStream(plugin: PDFPlus, action: string, sourcePath: string | u
     if (!view) throw new AIError('aborted', 'No sidebar.');
 
     const cache = getCache(plugin);
-    const key = await cacheKey(...cacheKeyParts);
+    const key = await providerCacheKey(plugin, ...cacheKeyParts);
     const cached = await cache.get<string>(key);
     if (cached !== null) {
         const block = view.addBlock({ action: `${action} (cached)`, sourcePath });
@@ -114,7 +113,7 @@ async function selectionAction(plugin: PDFPlus, action: string, build: (sel: str
     const lang = resolveLang(plugin, sel);
     const { system, user } = build(sel, lang);
     try {
-        await runStream(plugin, action, sourcePath, system, user, ['sel', action, sel, PROMPT_VERSION, lang]);
+        await runStream(plugin, action, sourcePath, system, user, ['sel', action, sel, PROMPT_VERSION, lang, plugin.settings.ai.outputLanguage]);
     } catch (e) {
         if (!(e instanceof AIError && e.kind === 'aborted')) new Notice(`PDF++ AI: ${normalizeError(e).message}`, 6000);
     }
@@ -122,16 +121,25 @@ async function selectionAction(plugin: PDFPlus, action: string, build: (sel: str
 
 export const explainSelectionAction = (plugin: PDFPlus) => selectionAction(plugin, 'Explain', (s, l) => explainPrompt(s, l));
 export const summarizeSelectionAction = (plugin: PDFPlus) => selectionAction(plugin, 'Summarize selection', (s, l) => summarizeSelectionPrompt(s, l));
-export const translateSelectionAction = (plugin: PDFPlus) => selectionAction(plugin, 'Translate', (s, l) => translatePrompt(s, l));
+export const translateSelectionAction = (plugin: PDFPlus) => selectionAction(plugin, 'Translate', (s) => translatePrompt(s, plugin.settings.ai.outputLanguage));
 
 export async function askSelectionAction(plugin: PDFPlus, question?: string) {
     const sel = activeSelectionText(plugin);
     const q = question ?? await promptUser(plugin, 'Ask AI');
     if (!q) return;
-    const sourcePath = activePDFFile(plugin)?.path;
-    const ctx = sel || '';
-    const lang = resolveLang(plugin, ctx || q);
-    const { system, user } = askPrompt(ctx || '(no selection — answer about the open paper if you can, else say so)', q, lang);
+    const file = activePDFFile(plugin);
+    const sourcePath = file?.path;
+    let ctx = sel;
+    if (!ctx) {
+        if (!file) { new Notice('PDF++ AI: open a PDF or select a passage first.', 4000); return; }
+        try {
+            const extracted = await extractPDFText(plugin, file);
+            if (isScanned(extracted)) { new Notice('PDF++ AI: run OCR before asking about this PDF.', 5000); return; }
+            ctx = extracted.fullText;
+        } catch (e) { new Notice(`PDF++ AI: ${normalizeError(e).message}`, 6000); return; }
+    }
+    const lang = resolveLang(plugin, ctx);
+    const { system, user } = askPrompt(ctx, q, lang);
     try {
         await runStream(plugin, 'Ask AI', sourcePath, system, user, ['ask', q, ctx, PROMPT_VERSION, lang]);
     } catch (e) {

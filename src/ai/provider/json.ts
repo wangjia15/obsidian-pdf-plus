@@ -3,7 +3,7 @@
 
 import PDFPlus from 'main';
 import { getSharedChatClient } from './minimax-chat';
-import { ChatMessage } from './types';
+import { ChatMessage, type ChatRequest } from './types';
 
 /** Result of a strict-JSON chat call: the parsed value, or null if the model output wasn't JSON. */
 export type ParsedJSON = Record<string, unknown>;
@@ -27,15 +27,15 @@ export function parseJsonLoose(text: string): ParsedJSON | null {
  * Retry/concurrency is owned by the provider's `withRetry` (inside client.chat) keyed by the
  * given capability — do NOT wrap this in another withRetry, or retries compound (see review).
  */
-export async function chatJSON(plugin: PDFPlus, messages: ChatMessage[], capability: 'chat' | 'vision' = 'chat'): Promise<ParsedJSON | null> {
+export async function chatJSON(plugin: PDFPlus, messages: ChatMessage[], capability: 'chat' | 'vision' = 'chat', options: Pick<ChatRequest, 'signal' | 'maxTokens' | 'model'> = {}): Promise<ParsedJSON | null> {
     const client = getSharedChatClient(plugin);
-    let res = await client.chat({ messages, capability, json: true, thinking: 'off', temperature: 0.1 });
+    let res = await client.chat({ ...options, messages, capability, json: true, thinking: 'off', temperature: 0.1 });
     let parsed = parseJsonLoose(res.text);
     let history = messages;
     const REPAIR_ROUNDS = 2;
     for (let attempt = 0; !parsed && attempt < REPAIR_ROUNDS; attempt++) {
         history = [...history, { role: 'assistant', content: res.text }, { role: 'user', content: 'Your previous response was not valid JSON. Return ONLY the JSON object now — no prose, no code fences, no explanation.' }];
-        res = await client.chat({ messages: history, capability, json: true, thinking: 'off', temperature: 0 });
+        res = await client.chat({ ...options, messages: history, capability, json: true, thinking: 'off', temperature: 0 });
         parsed = parseJsonLoose(res.text);
     }
     return parsed;

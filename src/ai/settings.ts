@@ -22,8 +22,11 @@ export const ANNOTATION_CATEGORIES: AnnotationCategory[] = [
 export interface AISettings {
     /** Master switch (default false). When off, the plugin behaves exactly as without AI. */
     aiEnabled: boolean;
-    /** First-run privacy consent: "selected text/images will be sent to MiniMax". */
+    /** First-run privacy consent: "selected text/images will be sent to the selected provider". */
     consentGiven: boolean;
+
+    chatProvider: 'minimax' | 'glm-cn';
+    glm: { baseUrl: string; apiKey: string; chatModel: string; visionModel: string };
 
     minimax: {
         baseUrl: string;        // 'https://api.minimaxi.com'
@@ -72,6 +75,9 @@ export interface AISettings {
 export const DEFAULT_AI_SETTINGS: AISettings = {
     aiEnabled: false,
     consentGiven: false,
+
+    chatProvider: 'minimax',
+    glm: { baseUrl: 'https://open.bigmodel.cn/api/coding/paas/v4', apiKey: '', chatModel: 'glm-5.3', visionModel: 'glm-5.3-flash' },
 
     minimax: {
         baseUrl: 'https://api.minimaxi.com',
@@ -129,6 +135,7 @@ export function migrateAISettings(ai: any): AISettings {
             }
         }
     }
+    if (out.chatProvider !== 'glm-cn') out.chatProvider = 'minimax';
     // ensure the monthly window resets
     if (out.tokenUsage?.periodKey !== currentPeriodKey()) {
         out.tokenUsage = { periodKey: currentPeriodKey(), tokens: 0 };
@@ -145,11 +152,11 @@ export function renderAISettingsSection(plugin: PDFPlus, tab: PDFPlusSettingTab)
     const ai = () => plugin.settings.ai;
     const save = async (redisplay = false) => { await plugin.saveSettings(); if (redisplay) tab.redisplay(); };
 
-    tab.addHeading('AI (MiniMax) — experimental', 'ai', 'lucide-sparkles');
+    tab.addHeading('AI — experimental', 'ai', 'lucide-sparkles');
 
     new Setting(tab.contentEl)
         .setName('Enable AI module')
-        .setDesc('Master switch. Disabling removes all AI UI without affecting the rest of PDF++. Requires a MiniMax API key.')
+        .setDesc('Master switch. Disabling removes all AI UI without affecting the rest of PDF++. Choose a chat provider and configure its API key.')
         .addToggle((t) => t.setValue(ai().aiEnabled).onChange(async (v) => {
             ai().aiEnabled = v;
             await save(true);
@@ -159,21 +166,35 @@ export function renderAISettingsSection(plugin: PDFPlus, tab: PDFPlusSettingTab)
 
     new Setting(tab.contentEl)
         .setName('Privacy consent')
-        .setDesc('When AI is used, selected text and images from the current PDF are sent to MiniMax. Nothing is sent without an explicit action.')
+        .setDesc('When AI is used, selected text and images from the current PDF are sent to your selected provider. Speech uses MiniMax. Nothing is sent without an explicit action.')
         .addToggle((t) => t.setValue(ai().consentGiven).onChange(async (v) => { ai().consentGiven = v; await save(); }));
 
     // --- Provider ---
+    new Setting(tab.contentEl).setName('Chat provider')
+        .addDropdown((d) => d.addOptions({ minimax: 'MiniMax', 'glm-cn': 'GLM Coding Plan (中国区)' })
+            .setValue(ai().chatProvider).onChange(async (v) => { ai().chatProvider = v as AISettings['chatProvider']; await save(true); }));
+    if (ai().chatProvider === 'glm-cn') {
+        new Setting(tab.contentEl).setName('GLM API key').setDesc('中国区 Coding Plan 密钥。明文保存于 data.json，会随仓库同步。')
+            .addText((t) => { t.inputEl.type = 'password'; t.setValue(ai().glm.apiKey).onChange(async (v) => { ai().glm.apiKey = v.trim(); await save(); }); });
+        new Setting(tab.contentEl).setName('GLM base URL').setDesc('中国区 Coding Plan: https://open.bigmodel.cn/api/coding/paas/v4')
+            .addText((t) => t.setValue(ai().glm.baseUrl).onChange(async (v) => { ai().glm.baseUrl = v.trim(); await save(); }));
+        new Setting(tab.contentEl).setName('GLM text model')
+            .addText((t) => t.setValue(ai().glm.chatModel).onChange(async (v) => { ai().glm.chatModel = v.trim(); await save(); }));
+        new Setting(tab.contentEl).setName('GLM image model').setDesc('图片、页面截图和裁剪区域使用此模型。')
+            .addText((t) => t.setValue(ai().glm.visionModel).onChange(async (v) => { ai().glm.visionModel = v.trim(); await save(); }));
+    }
+
     new Setting(tab.contentEl)
-        .setName('API key')
+        .setName('MiniMax API key (chat / TTS)')
         .setDesc('MiniMax API key (Bearer token). Stored in data.json — vault sync will sync it.')
         .addText((t) => { t.inputEl.type = 'password'; t.setValue(ai().minimax.apiKey).onChange(async (v) => { ai().minimax.apiKey = v.trim(); await save(); }); });
 
-    new Setting(tab.contentEl).setName('Group ID').addText((t) => t.setValue(ai().minimax.groupId).onChange(async (v) => { ai().minimax.groupId = v.trim(); await save(); }));
+    new Setting(tab.contentEl).setName('MiniMax group ID').addText((t) => t.setValue(ai().minimax.groupId).onChange(async (v) => { ai().minimax.groupId = v.trim(); await save(); }));
 
-    new Setting(tab.contentEl).setName('Base URL').setDesc('Domestic: https://api.minimaxi.com · International: https://api.minimax.io')
+    new Setting(tab.contentEl).setName('MiniMax base URL').setDesc('Domestic: https://api.minimaxi.com · International: https://api.minimax.io')
         .addText((t) => t.setValue(ai().minimax.baseUrl).onChange(async (v) => { ai().minimax.baseUrl = v.trim(); await save(); }));
 
-    new Setting(tab.contentEl).setName('Chat model').addText((t) => t.setValue(ai().minimax.chatModel).onChange(async (v) => { ai().minimax.chatModel = v.trim(); await save(); }));
+    new Setting(tab.contentEl).setName('MiniMax chat model').addText((t) => t.setValue(ai().minimax.chatModel).onChange(async (v) => { ai().minimax.chatModel = v.trim(); await save(); }));
     new Setting(tab.contentEl).setName('TTS model (instant)').addText((t) => t.setValue(ai().minimax.ttsModelInstant).onChange(async (v) => { ai().minimax.ttsModelInstant = v.trim(); await save(); }));
     new Setting(tab.contentEl).setName('TTS model (podcast)').addText((t) => t.setValue(ai().minimax.ttsModelPodcast).onChange(async (v) => { ai().minimax.ttsModelPodcast = v.trim(); await save(); }));
 
@@ -181,7 +202,9 @@ export function renderAISettingsSection(plugin: PDFPlus, tab: PDFPlusSettingTab)
         .setName('Test connection')
         .setDesc('Sends a trivial chat request to verify the key, base URL, and model.')
         .addButton((b) => b.setButtonText('Test').onClick(async () => {
-            if (!ai().minimax.apiKey) { new Notice('PDF++ AI: set an API key first.', 4000); return; }
+            if (!ai().consentGiven) { new Notice('PDF++ AI: enable Privacy consent first.', 4000); return; }
+            plugin.ai.assertBudget();
+            if (!(ai().chatProvider === 'glm-cn' ? ai().glm.apiKey : ai().minimax.apiKey)) { new Notice('PDF++ AI: set an API key first.', 4000); return; }
             b.setDisabled(true).setButtonText('Testing…');
             const client = (await import('./provider/minimax-chat')).getSharedChatClient(plugin);
             const r = await client.testConnection();
@@ -206,7 +229,7 @@ export function renderAISettingsSection(plugin: PDFPlus, tab: PDFPlusSettingTab)
     new Setting(tab.contentEl).setName('Podcast chunk size (chars)').setDesc('Max characters per TTS request. Smaller chunks → more parts → more parallelism and faster per-job synthesis.').addText((t) => t.setValue(String(ai().podcast.chunkSize)).onChange(async (v) => { const n = Math.max(500, Number(v) || 3000); ai().podcast.chunkSize = n; await save(true); }));
 
     // --- Annotation ---
-    new Setting(tab.contentEl).setName('Auto-annotation default mode').addDropdown((d) => d.addOptions({ 'vault': 'Vault-only (non-destructive)', 'pdf': 'Write into PDF' }).setValue(ai().annotation.defaultMode).onChange(async (v) => { ai().annotation.defaultMode = v as any; await save(); }));
+    new Setting(tab.contentEl).setName('Auto-annotation default mode').setDesc('Both modes save a separate Markdown note with the paper outline, highlights and comments for K-Plex note to sections.').addDropdown((d) => d.addOptions({ 'vault': 'Vault-only (non-destructive)', 'pdf': 'Write into PDF' }).setValue(ai().annotation.defaultMode).onChange(async (v) => { ai().annotation.defaultMode = v as any; await save(); }));
 
     // --- Citations ---
     new Setting(tab.contentEl).setName('Enable citation enrichment').addToggle((t) => t.setValue(ai().citations.enabled).onChange(async (v) => { ai().citations.enabled = v; await save(); }));

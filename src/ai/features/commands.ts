@@ -12,6 +12,7 @@ import { getOrCreateAISidebar } from '../ui/sidebar-view';
 import { stopSpeaking } from '../audio/speak';
 import { summarizePaperAction, explainSelectionAction, summarizeSelectionAction, translateSelectionAction, askSelectionAction } from './summarize';
 import { analyzeImageAction, parseAllFiguresAction, analyzeRegionAction } from './figure-analysis';
+import { fullReadingAction } from './full-reading';
 import { autoAnnotateAction } from './auto-annotate';
 import { showReferencesPanelAction } from './references';
 import { generatePodcastAction, generateScriptAction, synthesizeAudioAction, assembleAction } from './podcast';
@@ -74,7 +75,8 @@ export const AI_COMMANDS: AICommandDef[] = [
     },
 
     // --- 注释与引用 ---
-    { suffix: 'auto-annotate', label: 'Auto-annotate paper', group: 'annotate', icon: 'lucide-highlighter', run: (p) => autoAnnotateAction(p) },
+    { suffix: 'auto-annotate', label: 'Auto-annotate current PDF', group: 'annotate', icon: 'lucide-highlighter', run: (p) => autoAnnotateAction(p) },
+    { suffix: 'full-reading', label: '全文精读批注（入门解释）', group: 'annotate', icon: 'lucide-book-open', run: (p) => fullReadingAction(p) },
     { suffix: 'references', label: 'Show references panel', group: 'annotate', icon: 'lucide-book-marked', run: (p) => showReferencesPanelAction(p) },
 
     // --- 播客 ---

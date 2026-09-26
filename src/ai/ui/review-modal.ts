@@ -68,7 +68,7 @@ export class AutoAnnotationReviewModal extends PDFPlusModal {
         const footer = contentEl.createDiv({ cls: 'pdf-plus-ai-modal-footer' });
         const approve = footer.createEl('button', { cls: 'mod-cta', text: `Write ${located.length} annotations` });
         approve.onclick = () => {
-            const approved = this.proposals.filter((_, i) => this.checks[i].checked);
+            const approved = [...located, ...unmatched].filter((_, i) => this.checks[i].checked);
             this.close();
             this.onApprove(approved);
         };

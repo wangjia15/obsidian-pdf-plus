@@ -73,6 +73,12 @@ export class PAISidebarView extends ItemView {
             import('../features/summarize').then((m) => m.summarizePaperAction(this.plugin)).catch((e) => console.error(e));
         });
 
+        const annotateBtn = toolbar.createEl('button', { cls: 'pdf-plus-ai-btn', text: '自动注解当前 PDF' });
+        this.registerDomEvent(annotateBtn, 'click', () => executeAICommand(this.plugin, 'auto-annotate'));
+
+        const readingBtn = toolbar.createEl('button', { cls: 'pdf-plus-ai-btn', text: '全文精读批注' });
+        this.registerDomEvent(readingBtn, 'click', () => executeAICommand(this.plugin, 'full-reading'));
+
         const clearBtn = toolbar.createEl('button', { cls: 'pdf-plus-ai-btn', text: 'Clear' });
         this.registerDomEvent(clearBtn, 'click', () => this.listEl.empty());
 

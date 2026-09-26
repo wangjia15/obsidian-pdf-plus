@@ -92,7 +92,7 @@ export class AIManager extends Component {
     /** Returns false (and notices) if consent has not been given. */
     hasConsent(): boolean {
         if (!this.settings.consentGiven) {
-            new Notice('PDF++ AI: privacy consent required. Open Settings > PDF++ > AI (MiniMax).', 6000);
+            new Notice('PDF++ AI: privacy consent required. Open Settings > PDF++ > AI.', 6000);
             return false;
         }
         return true;

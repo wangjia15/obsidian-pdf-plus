@@ -9,15 +9,21 @@
 
 ### 1.1 启用模块
 
-1. 打开 `Settings → 第三方插件 → PDF++`，滚动到最下方 **"AI (MiniMax) — experimental"** 区块。
+1. 打开 `Settings → 第三方插件 → PDF++`，滚动到最下方 **"AI — experimental"** 区块。
 2. 打开 **Enable AI module** 开关（这一步会立即注册 AI 侧边栏 / 命令 / 右键菜单，无需重启 Obsidian）。
-3. 打开 **Privacy consent** 开关 —— 使用任意 AI 功能前必须同意："当前 PDF 的选中文字/图片会被发送给 MiniMax"。
-4. 在 **API key** 填入你的 MiniMax Bearer Token，**Group ID** 按需填写。
+3. 打开 **Privacy consent** 开关 —— 使用任意 AI 功能前必须同意："当前 PDF 的选中文字/图片会被发送给所选提供商"。
+4. 选择 **Chat provider**。使用 MiniMax 时，在 **MiniMax API key (chat / TTS)** 填入 Bearer Token，**Group ID** 按需填写。
    - 国内版 Base URL：`https://api.minimaxi.com`（默认）
    - 国际版：`https://api.minimax.io`
 5. 点击 **Test connection** 按钮，出现 `✓` 提示即表示密钥可用。
 
 > API Key 明文存在 vault 的 `data.json` 里，如果启用了坚果云/远程同步插件，会一并同步，请自行评估风险。
+
+### GLM 中国区 Coding Plan
+
+在 **Chat provider** 选择 **GLM Coding Plan (中国区)**，填入 **GLM API key**。默认地址为 `https://open.bigmodel.cn/api/coding/paas/v4`，文本模型为 `glm-5.3`，图片模型为 `glm-5.3-flash`。图片、当前页和裁剪区域自动走图片模型；文本走文本模型。可编辑模型名和地址。端点配置见[官方接入指南](https://docs.bigmodel.cn/cn/coding-plan/quick-start)，图片支持见[官方模型文档](https://docs.bigmodel.cn/cn/guide/models/vlm/glm-5.3-flash)。套餐可用范围以提供商账户规则为准。
+
+GLM 请求通过 Obsidian 网络接口发送，生成完成后一次显示结果。语音和播客音频仍使用 MiniMax TTS，需要单独配置 MiniMax 密钥。切换提供商或模型后使用独立缓存。
 
 ### 1.2 打开 AI 侧边栏
 
@@ -44,7 +50,7 @@
 | Ask AI about selection | 针对选区（或整篇论文）提问 | — |
 | Analyze image (active page) | 用视觉模型解析当前页的图/表/公式 | 打开一个 PDF |
 | Parse all figures | 扫描全篇 PDF，逐页解析所有图表 | 打开一个 PDF |
-| Auto-annotate paper | 自动提取要点并生成可审核的批注 | 打开一个 PDF |
+| Auto-annotate current PDF | 自动提取要点并生成可审核的批注 | 打开一个 PDF |
 | Show references panel | 用 Semantic Scholar/Crossref/OpenAlex 富化参考文献 | PDF++ 已解析出参考文献列表 |
 | Generate podcast from PDF | 把论文转成音频播客（单人/双人对话） | 打开一个 PDF |
 | Generate knowledge map | 生成 Canvas 知识图谱或互链笔记 | 打开一个 PDF |
@@ -67,7 +73,7 @@
 3. 如果是扫描版无文字层 PDF，会弹提示"摘要质量可能较差，但图表解析仍可用"；
 4. 结果出来后点 `Insert`，插入到你正在写的读书笔记里。
 
-> 相同 PDF + 相同 prompt 版本 + 相同输出语言，会命中本地缓存（标题会带 `(cached)`），不重复计费。
+> 相同提供商和模型 + 相同 PDF + 相同 prompt 版本 + 相同输出语言，会命中本地缓存（标题会带 `(cached)`），不重复计费。
 
 ### 3.2 划词追问 — `Explain / Summarize / Translate / Ask`
 
@@ -90,20 +96,26 @@
 
 **批量场景**：整理一篇图表很多的综述论文时，直接跑 `Parse all figures`，扫完后侧边栏提示"Parsed 12 figure(s) across 12 pages. Saved to [[xxx.ai.md]]"，点开链接就是全部图表的解读合集。
 
-### 3.4 自动标注 — `Auto-annotate paper`
+### 3.4 自动标注 — `Auto-annotate current PDF`
 
 **用途**：让模型通读全文，挑出「研究问题 / 方法 / 关键结果 / 局限 / 贡献 / 定义」六类关键句，PDF++ 用文本层坐标把每条引用精确定位到 PDF 里的具体位置，**弹出审核弹窗，你勾选批准后才会真正写入**——未匹配到原文的句子会单独列出、永远不会被瞎猜写入。
 
+默认处理当前打开的 PDF。可以直接点击 AI 侧栏的 **自动注解当前 PDF**；侧栏取得焦点后，仍使用最近活动的文档窗格中的 PDF。多份 PDF 同时打开时，以你刚切换到的那一份为目标，审核时切换焦点也不会改变本次批注目标。
+
 写入方式由设置里的 **Auto-annotation default mode** 决定：
-- **Vault-only**（默认，非破坏性）：生成一份 `<论文名>.ai.md` 伴生笔记，每条批注是一个带颜色的 PDF++ 选区链接；
-- **Write into PDF**：调用 PDF++ 已有的"写入 PDF 文件"能力，把批注写成真正的高亮标注（需要先在 PDF++ 设置里打开"Editing PDF files"实验性功能）。
+- **Vault-only**（默认，非破坏性）：生成一份 `<论文名>.annotations.md`，每条批注包含原文高亮、评注脚注和带颜色的 PDF++ 选区链接；
+- **Write into PDF**：调用 PDF++ 已有的"写入 PDF 文件"能力，把批注写成真正的高亮标注，并生成相同结构的 Markdown 笔记。写入时自动加载相关页面；无法写入的条目仍保留在 Markdown 中（需要先在 PDF++ 设置里打开"Editing PDF files"实验性功能）。
 
 **案例**：精读一篇要写综述的论文，不想自己一段段找 Limitation 在哪：
-1. `PDF++ AI: Auto-annotate paper`；
-2. 等待"Asking M3 for important passages…" → "Locating N quotes in the text layer…"；
+1. `PDF++ AI: Auto-annotate current PDF`；
+2. 等待"Finding paper sections and important passages…" → "Locating N quotes in the text layer…"；
 3. 弹出审核窗：已定位的条目默认勾选、可以单独取消，未定位的条目显示"⚠ not located — skipped"且不可勾选；
 4. 点 `Write N annotations`；
 5. Vault 模式下会打开新生成的 `<论文名>.ai.md`，每类标注用你在设置里配置的颜色（默认：研究问题=黄、方法=蓝、关键结果=绿、局限=红、贡献=紫、定义=橙）。
+
+批注笔记优先保留 PDF 自带目录；没有可用目录时，根据模型提取并在原文中定位的章节生成标题层级。无法定位章节时，批注集中在「批注 / Annotations」下。目录中的各章节对应 Markdown 标题，每条批注使用 PDF++ 原生 `> [!PDF|颜色] [[PDF#选区|文件名, p.N]]` 格式，原文放在 `> >` 引文中，AI 评注写在同一 callout 下方。点击 callout 标题链接可跳回 PDF；重复生成采用 `-2`、`-3` 后缀，保留旧笔记和图像分析的 `.ai.md`。
+
+**在 K-Plex 中查看**：打开生成的 `.annotations.md`，以此笔记为中心，执行 **Expand note to sections**，打开章节的高亮显示，即可看到原文及其评注；点击章节高亮可直接跳回对应 PDF 选区。此格式兼容现有 K-Plex，不需要额外导入。扫描 PDF 需要先完成 OCR；未定位引文不会写入。
 
 ### 3.5 参考文献增强 — `Show references panel`
 
@@ -187,3 +199,28 @@ A: `Summarize paper` / 划词类功能效果会很差（因为提取不到文字
 - 只有你主动触发的操作才会把内容发给 MiniMax（选中的文字、渲染的页面截图、或整篇提取出的正文），没有后台静默上传。
 - API Key 明文保存在 `data.json`，会随 vault 同步方案一起同步，请自行判断是否可接受。
 - 参考文献增强会向 Semantic Scholar / Crossref / OpenAlex 三个外部公共 API 发起匿名查询（不含论文全文，只有标题/作者/年份），与 MiniMax 无关。
+
+## 提示词与阅读质量
+
+自动批注优先选择能体现研究问题、方法机制、结果证据和结论边界的原文。评注解释该段的重要性，通常为 1–2 句；不强制凑齐六类批注，也不把相关工作误写成本论文贡献。引文必须来自单页连续原文，目录只保留可定位的真实章节。
+
+摘要区分作者报告与阅读判断，并保留数据集、指标和比较条件。图表分析对无法辨认的内容明确说明，不猜测数字；表格保留行列、单位和精度。播客按目标时长估算篇幅，输出适合直接朗读的文字。
+
+翻译的中文/英文选项指定目标语言；Auto 在中英文之间切换。自动批注、图表和知识图谱的 Auto 跟随输入的主要语言。问答在有选区时使用选区，没有选区时读取当前 PDF 正文；没有提供的证据不会被当作已知事实。
+
+提示词版本更新后会使用新缓存；旧笔记不会自动重写。提示词约束有助于减少错误，模型生成的引文、数字及解释仍应在审核时核对。
+
+## 全文精读批注（入门解释）
+
+打开论文 PDF，点击 AI 侧栏 **全文精读批注**，或运行命令 **PDF++ AI: 全文精读批注（入门解释）**。它与普通自动批注不同：逐页解释正文中的实质性段落，不受全文 30 条批注上限限制，并逐页扫描图片、图表、结果表格和独立列出的公式。
+
+- 正文：解释这段在说什么、术语是什么意思、推理或机制如何运作、为什么重要以及结论的适用范围。仅将能在当前页精确定位的原文写入选区批注，未定位引文计入处理记录。
+- 图片和图表：逐项解释坐标、图例、组件、箭头和各子图，说明怎样阅读及它能支持什么结论。
+- 表格：解释任务、数据集、指标方向、基线比较、主要结果和消融实验，不把加粗或最优值当成统计显著性证据。可读表格同时保留 Markdown 表格。
+- 独立公式：解释符号、输入输出、运算步骤、直觉和假设；能读清时附上 LaTeX，看不清时明确说明。
+
+GLM 正文请求使用配置的文本模型（默认 `glm-5.3`），视觉请求固定使用多模态 `glm-5.3-flash`，不会把页面图片发给 `glm-5.3`。输出语言遵循 AI 的 Output language 设置；需要中文解释时请选择 中文。
+
+结果保存为论文旁的 `<论文名>.reading.md`，保留目录层级，使用 PDF++ 原生 callout。此功能生成精读 Markdown，不修改 PDF 文件。原文可跳转到选区，图表和公式可跳到模型定位的页面区域；无法可靠定位区域时跳到所在页面。K-Plex 的 note to sections 可直接显示这些引文和解释。
+
+进度窗口可以取消。正文和视觉结果分别按页缓存，取消、网络错误或预算不足时保存已完成内容，并标出未处理或失败的页面；重新运行会复用已完成页面缓存。重复生成保留旧笔记，使用 `-2` 等后缀。页面处理完成不代表模型绝不会漏识别，需对照原文核查；无文本层的页面只进行视觉对象解释，正文精读需要先 OCR。

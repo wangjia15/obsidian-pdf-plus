@@ -7,19 +7,14 @@ import PDFPlus from 'main';
 import { extractPDFText } from '../context/extractor';
 import { getOrCreateAISidebar } from '../ui/sidebar-view';
 import { chatJSON } from '../provider/json';
+import { outlineSystem } from '../prompts/knowledge-map';
 import { normalizeError } from '../provider/types';
 
 function activePDFFile(plugin: PDFPlus): TFile | null { return plugin.lib.getPDFView()?.file ?? null; }
-function langFor(plugin: PDFPlus): 'zh' | 'en' { return plugin.settings.ai.outputLanguage === 'zh' ? 'zh' : 'en'; }
+function langFor(plugin: PDFPlus) { return plugin.settings.ai.outputLanguage; }
 
 interface OutlineSection { id: string; title: string; summary: string; page?: number; }
 interface Outline { center: { title: string; summary: string }; sections: OutlineSection[]; }
-
-function outlineSystem(lang: 'zh' | 'en'): string {
-    return `You produce a structured outline of an academic paper for a knowledge map.
-Return ONLY JSON: { "center": { "title": "<paper title or short label>", "summary": "<2-3 sentence overview>" }, "sections": [ { "id": "s1", "title": "<section name>", "summary": "<1-2 sentence condensation>", "page": <1-based page number if known, else omit> } ] }
-Cover: research question, method, results, limitations, contributions. 5–8 sections. Do not output anything outside the JSON object.${lang === 'zh' ? ' Reply in 中文.' : ' Reply in English.'}`;
-}
 
 export async function generateKnowledgeMapAction(plugin: PDFPlus) {
     const file = activePDFFile(plugin);

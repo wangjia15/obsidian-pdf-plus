@@ -8,7 +8,7 @@
 // and per-call token spend roughly an order of magnitude.
 
 import { TFile } from 'obsidian';
-import { PDFPageProxy } from 'pdfjs-dist';
+import { PDFPageProxy, type PDFDocumentProxy } from 'pdfjs-dist';
 import { Rect } from 'typings';
 import PDFPlus from 'main';
 
@@ -35,7 +35,7 @@ async function renderCappedCanvas(plugin: PDFPlus, page: PDFPageProxy, cropRect?
     const opts: { resolution?: number; cropRect?: Rect; renderParams?: object } = { resolution: 2 };
     // resolution:2 is a deliberate, modest scale (≈ 2× viewport). getOptionalRenderParameters
     // preserves dark-mode theme adaptation; toCappedJpeg enforces the hard long-edge cap.
-    const dataUrl = await plugin.lib.pdfPageToImageDataUrl(page, { type: 'image/jpeg', encoderOptions: 0.8, ...opts });
+    const dataUrl = await plugin.lib.pdfPageToImageDataUrl(page, { type: 'image/jpeg', encoderOptions: 0.8, ...opts, ...(cropRect ? { cropRect } : {}) });
     // pdfPageToImageDataUrl returns a JPEG data URL already; load it back onto a canvas so the
     // long-edge cap applies uniformly (matters for large pages where resolution:2 still exceeds it).
     const img = new Image();
@@ -53,13 +53,13 @@ export interface RenderedImage {
     pageNumber: number;
 }
 
-export async function renderPage(plugin: PDFPlus, file: TFile, pageNumber: number): Promise<RenderedImage> {
+export async function renderPage(plugin: PDFPlus, file: TFile, pageNumber: number, document?: PDFDocumentProxy): Promise<RenderedImage> {
     // Prefer the canvas PDF.js has already painted on screen — a full loadPDFDocument +
     // render round-trip per page is the main cost in parseAllFigures. Fall back to an
     // independent render only when there's no live viewer or the page isn't painted yet.
     // Either way, run it through toCappedJpeg so the model never receives a multi-MB PNG.
     const child = plugin.lib.getPDFViewerChild(true);
-    const canvas = child?.getPage(pageNumber)?.canvas;
+    const canvas = !document && child?.file?.path === file.path ? child.getPage(pageNumber)?.canvas : undefined;
     if (canvas && canvas.width > 1 && canvas.height > 1) {
         try {
             return { dataUrl: toCappedJpeg(canvas), pageNumber };
@@ -68,13 +68,13 @@ export async function renderPage(plugin: PDFPlus, file: TFile, pageNumber: numbe
         }
     }
 
-    const doc = await plugin.lib.loadPDFDocument(file);
+    const doc = document ?? await plugin.lib.loadPDFDocument(file);
     try {
         const page = await doc.getPage(pageNumber);
         const capped = await renderCappedCanvas(plugin, page);
         return { dataUrl: toCappedJpeg(capped), pageNumber };
     } finally {
-        await doc.destroy().catch(() => { /* ignore */ });
+        if (!document) await doc.destroy().catch(() => { /* ignore */ });
     }
 }
 

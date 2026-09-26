@@ -8,13 +8,13 @@ import PDFPlus from 'main';
 import { extractPDFText } from '../../context/extractor';
 import { chatJSON } from '../../provider/json';
 import { podcastSystem, podcastUser, PodcastSegment, PROMPT_VERSION } from '../../prompts/podcast';
-import { getCache, cacheKey } from '../../context/cache';
+import { getCache, providerCacheKey } from '../../context/cache';
+import { resolveOutputLanguage } from '../../prompts/shared';
 import { normalizeError } from '../../provider/types';
 import { getOrCreateAISidebar } from '../../ui/sidebar-view';
 import { buildManifest, writeManifest, scriptJsonPath, scriptMdPath, podcastDir, type PodcastManifest } from './manifest';
 
 function activePDFFile(plugin: PDFPlus): TFile | null { return plugin.lib.getPDFView()?.file ?? null; }
-function langFor(plugin: PDFPlus): 'zh' | 'en' { return plugin.settings.ai.outputLanguage === 'zh' ? 'zh' : 'en'; }
 
 function renderScriptMd(file: TFile, segments: PodcastSegment[]): string {
 	const turns = segments.map((s) => `**${s.speaker}:** ${s.text}`).join('\n\n');
@@ -31,7 +31,6 @@ export async function generateScriptAction(plugin: PDFPlus): Promise<PodcastMani
 	const ai = plugin.settings.ai;
 	const mode = ai.podcast.mode;
 	const minutes = ai.podcast.targetMinutes;
-	const lang = langFor(plugin);
 
 	// Persistent sidebar block so the stage progress is visible long after the notice is gone.
 	const view = await getOrCreateAISidebar(plugin, true);
@@ -49,10 +48,12 @@ export async function generateScriptAction(plugin: PDFPlus): Promise<PodcastMani
 		return null;
 	}
 
+	const lang = resolveOutputLanguage(ai.outputLanguage, extracted.fullText);
+
 	// 2. script (cached by file + prompt version + mode/length/lang so re-runs are free)
 	block?.setLoading('Generating script…');
 	const cache = getCache(plugin);
-	const key = await cacheKey('podcast-script', extracted.fileKey, PROMPT_VERSION, mode, String(minutes), lang);
+	const key = await providerCacheKey(plugin, 'podcast-script', extracted.fileKey, PROMPT_VERSION, mode, String(minutes), lang);
 	let segments: PodcastSegment[];
 	const cached = await cache.get<PodcastSegment[]>(key);
 	if (cached) {

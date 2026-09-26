@@ -1,4 +1,6 @@
-// MiniMax-M3 chat client (OpenAI-compatible endpoint).
+// Shared MiniMax / GLM China chat client (OpenAI-compatible endpoints).
+// GLM Coding Plan: POST https://open.bigmodel.cn/api/coding/paas/v4/chat/completions.
+// The historical class/module names are retained for existing feature imports.
 //
 // MiniMax 国内版 base URL: https://api.minimaxi.com (international: https://api.minimax.io).
 // Chat:  POST {baseUrl}/v1/text/chatcompletion_v2   (OpenAI-compatible)
@@ -6,7 +8,8 @@
 // Multimodal: images passed as image_url content parts (base64 data URL).
 //
 // Networking strategy:
-//   - chatStream(): true SSE streaming when the platform `fetch` exists (desktop + modern mobile);
+//   - GLM uses requestUrl for all calls, emitting the complete result to stream callbacks.
+//   - MiniMax chatStream(): true SSE streaming when the platform `fetch` exists (desktop + modern mobile);
 //     otherwise falls back to a single requestUrl round-trip (non-streaming).
 //   - chat(): always a single requestUrl round-trip (works everywhere, incl. older mobile).
 
@@ -17,19 +20,26 @@ import { ChatRequest, ChatResponse, ChatStreamHandle, AIError, normalizeError, r
 import { withRetry } from './ratelimit';
 
 /** Lazy singleton chat client bound to the plugin's live AI settings. */
-let _sharedChat: MiniMaxChatClient | null = null;
+const sharedChats = new WeakMap<PDFPlus, MiniMaxChatClient>();
 export function getSharedChatClient(plugin: PDFPlus): MiniMaxChatClient {
-    if (!_sharedChat) {
-        _sharedChat = new MiniMaxChatClient({
+    let client = sharedChats.get(plugin);
+    if (!client) {
+        client = new MiniMaxChatClient({
             getSettings: () => plugin.settings.ai,
+            beforeCall: () => {
+                plugin.ai.assertBudget();
+                if (!plugin.settings.ai.consentGiven) throw new AIError('auth', 'Privacy consent required.');
+            },
             onUsage: (u) => plugin.ai?.recordUsage(u.totalTokens),
         });
+        sharedChats.set(plugin, client);
     }
-    return _sharedChat;
+    return client;
 }
 
 export interface MiniMaxChatConfig {
     getSettings: () => AISettings;
+    beforeCall?: () => void;
     /** Called with token usage after each successful call (for the budget meter). */
     onUsage?: (u: { promptTokens: number; completionTokens: number; totalTokens: number }) => void;
 }
@@ -39,10 +49,12 @@ export class MiniMaxChatClient {
 
     private get s() { return this.cfg.getSettings(); }
 
+    private get provider() { return this.s.chatProvider === 'glm-cn' ? this.s.glm : this.s.minimax; }
+
     private get headers(): Record<string, string> {
         return {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${this.s.minimax.apiKey}`,
+            'Authorization': `Bearer ${this.provider.apiKey}`,
         };
     }
 
@@ -51,19 +63,28 @@ export class MiniMaxChatClient {
     // CORS config does not allow-list a "GroupId" header — it 400s/blocks at preflight.
     // requestUrl-based calls would work either way, but query-string keeps both paths consistent.
     private get chatUrl() {
+        if (this.s.chatProvider === 'glm-cn') return `${trimSlash(this.s.glm.baseUrl)}/chat/completions`;
         const base = `${trimSlash(this.s.minimax.baseUrl)}/v1/text/chatcompletion_v2`;
         return this.s.minimax.groupId ? `${base}?GroupId=${encodeURIComponent(this.s.minimax.groupId)}` : base;
     }
 
+    private model(req: ChatRequest): string {
+        const vision = req.capability === 'vision' || req.messages.some((m) => Array.isArray(m.content) && m.content.some((p) => p.type === 'image_url'));
+        return req.model ?? (this.s.chatProvider === 'glm-cn' && vision ? this.s.glm.visionModel : this.provider.chatModel);
+    }
+
     private body(req: ChatRequest, stream: boolean) {
         const payload: Record<string, unknown> = {
-            model: req.model ?? this.s.minimax.chatModel,
+            model: this.model(req),
             messages: req.messages,
             stream,
             temperature: req.temperature ?? 0.2,
         };
         if (req.maxTokens) payload['max_tokens'] = req.maxTokens;
-        if (req.thinking === 'adaptive') payload['thinking'] = { type: 'adaptive' };
+        if (this.s.chatProvider === 'glm-cn') {
+            payload['thinking'] = { type: 'enabled' };
+            payload['reasoning_effort'] = req.thinking === 'off' ? 'low' : 'max';
+        } else if (req.thinking === 'adaptive') payload['thinking'] = { type: 'adaptive' };
         if (req.json) {
             payload['response_format'] = { type: 'json_object' };
         }
@@ -73,6 +94,8 @@ export class MiniMaxChatClient {
     /** Non-streaming chat completion. Works on all platforms via requestUrl. */
     async chat(req: ChatRequest): Promise<ChatResponse> {
         const res = await withRetry(req.capability ?? 'chat', async () => {
+            this.cfg.beforeCall?.();
+            if (!this.provider.apiKey) throw new AIError('auth', 'Configure the selected chat provider API key first.');
             const r = await requestUrl({
                 url: this.chatUrl,
                 method: 'POST',
@@ -85,12 +108,14 @@ export class MiniMaxChatClient {
                 throw makeErr(r.json, r.status);
             }
             const data = r.json;
-            const text = data?.choices?.[0]?.message?.content ?? '';
+            const text = data?.choices?.[0]?.message?.content;
+            if (typeof text !== 'string' || !text.trim()) throw new AIError('badResponse', 'The provider returned no text. Try a larger output token limit.');
             const usage = parseUsage(data?.usage);
             return { text, usage, raw: data } as ChatResponse;
         }, { signal: req.signal });
 
         this.cfg.onUsage?.(res.usage);
+        if (req.signal?.aborted) throw new AIError('aborted', 'Cancelled.');
         return res;
     }
 
@@ -106,12 +131,14 @@ export class MiniMaxChatClient {
         const signal = req.signal ?? ac!.signal;
 
         const done = (async (): Promise<ChatResponse> => {
-            if (typeof fetch === 'undefined') {
+            if (this.s.chatProvider === 'glm-cn' || typeof fetch === 'undefined') {
                 // Fallback: single round-trip, emit all at once.
                 const full = await this.chat({ ...req, signal });
                 if (full.text) { partial = full.text; onDelta(full.text); }
                 return full;
             }
+            this.cfg.beforeCall?.();
+            if (!this.provider.apiKey) throw new AIError('auth', 'Configure the selected chat provider API key first.');
             const resp = await fetch(this.chatUrl, {
                 method: 'POST',
                 headers: this.headers,
@@ -156,8 +183,8 @@ export class MiniMaxChatClient {
     /** Quick connectivity check used by the "Test connection" button. */
     async testConnection(): Promise<{ ok: boolean; detail: string }> {
         try {
-            await this.chat({ messages: [{ role: 'user', content: 'ping' }], maxTokens: 4, thinking: 'off' });
-            return { ok: true, detail: `OK (model: ${this.s.minimax.chatModel}).` };
+            await this.chat({ messages: [{ role: 'user', content: 'ping' }], maxTokens: 1024, thinking: 'off' });
+            return { ok: true, detail: `OK (model: ${this.provider.chatModel}).` };
         } catch (e) {
             const norm = normalizeError(e);
             return { ok: false, detail: `${norm.kind}: ${norm.message}` };
@@ -226,8 +253,8 @@ async function readSSE(body: ReadableStream<Uint8Array>, onData: (data: string) 
 }
 
 export function warnIfNoKey(settings: AISettings): boolean {
-    if (!settings.minimax.apiKey) {
-        new Notice('PDF++ AI: No MiniMax API key configured. Open Settings > PDF++ > AI (MiniMax).', 6000);
+    if (!(settings.chatProvider === 'glm-cn' ? settings.glm.apiKey : settings.minimax.apiKey)) {
+        new Notice('PDF++ AI: No API key configured for the selected provider. Open Settings > PDF++ > AI.', 6000);
         return false;
     }
     return true;

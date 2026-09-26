@@ -6,7 +6,7 @@
 // tolerates hyphenated line breaks and minor whitespace differences. Falls back to prefix
 // matching when M3 truncates the quote. Unmatched quotes are reported (never guessed).
 
-import { ExtractedPage } from '../context/extractor';
+import type { ExtractedPage } from '../context/extractor';
 
 export interface Located {
     page: number;          // 1-based
@@ -62,15 +62,16 @@ function buildPageIndex(page: ExtractedPage): PageIndex {
     const posMap: Pos[] = [];
     for (let itemIdx = 0; itemIdx < page.items.length; itemIdx++) {
         const { out, map } = normalizeWithMap(page.items[itemIdx].str);
+        if (!out) continue;
+        if (searchText) {
+            searchText += ' ';
+            posMap.push({ itemIdx: -1, offsetInItem: -1 });
+        }
         for (let k = 0; k < out.length; k++) {
             searchText += out[k];
             posMap.push({ itemIdx, offsetInItem: map[k] });
         }
-        // separator space between items (boundary marker)
-        if (itemIdx < page.items.length - 1) {
-            searchText += ' ';
-            posMap.push({ itemIdx: -1, offsetInItem: -1 });
-        }
+
     }
     return { page, searchText, posMap };
 }
@@ -86,18 +87,22 @@ export function locateQuote(index: PageIndex[], quote: string): Located | null {
     if (q.length < 4) return null;
 
     for (const pi of index) {
-        const found = locateInPage(pi, q);
+        const found = locateInPage(pi, q, false);
+        if (found) return { page: pi.page.pageNumber, ...found };
+    }
+    for (const pi of index) {
+        const found = locateInPage(pi, q, true);
         if (found) return { page: pi.page.pageNumber, ...found };
     }
     return null;
 }
 
-function locateInPage(pi: PageIndex, q: string): Omit<Located, 'page'> | null {
+function locateInPage(pi: PageIndex, q: string, allowFuzzy: boolean): Omit<Located, 'page'> | null {
     // 1. exact normalized match
     let start = pi.searchText.indexOf(q);
     let matchLen = q.length;
     let fuzzy = false;
-    if (start < 0) {
+    if (start < 0 && allowFuzzy) {
         // 2. prefix fallbacks for truncated (or subtly-mismatched) quotes. A prefix hit anchors
         // only the quote's opening against real text, so mark it fuzzy for human confirmation.
         for (const plen of [60, 45, 30, 20]) {

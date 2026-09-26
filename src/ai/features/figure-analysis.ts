@@ -5,7 +5,7 @@
 
 import { Notice, TFile } from 'obsidian';
 import PDFPlus from 'main';
-import { getCache, cacheKey } from '../context/cache';
+import { getCache, providerCacheKey } from '../context/cache';
 import { renderPage, renderRect } from '../context/image-context';
 import { getOrCreateAISidebar } from '../ui/sidebar-view';
 import { AIProgressModal } from '../ui/progress';
@@ -27,7 +27,7 @@ function activePageNumber(plugin: PDFPlus): number | null {
     const v = plugin.lib.getPDFViewer();
     return v?.currentPageNumber ?? null;
 }
-function langFor(plugin: PDFPlus): 'zh' | 'en' { return plugin.settings.ai.outputLanguage === 'zh' ? 'zh' : 'en'; }
+function langFor(plugin: PDFPlus) { return plugin.settings.ai.outputLanguage; }
 
 /** Vision JSON call. Retry/concurrency is owned by chatJSON (capability 'vision'); callers
  *  shape the parsed object for their context (single figure vs. per-page figure array). */
@@ -78,7 +78,7 @@ export async function analyzeImageAction(plugin: PDFPlus) {
 
     const lang = langFor(plugin);
     const cache = getCache(plugin);
-    const key = await cacheKey('figure', file.name, file.stat.mtime, pageNumber, PROMPT_VERSION, lang);
+    const key = await providerCacheKey(plugin, 'figure', file.path, file.stat.mtime, pageNumber, PROMPT_VERSION, lang);
 
     const view = await getOrCreateAISidebar(plugin, true);
     if (!view) return;
@@ -120,7 +120,7 @@ export async function analyzeRegionAction(plugin: PDFPlus, pageNumber: number, r
 
     const lang = langFor(plugin);
     const cache = getCache(plugin);
-    const key = await cacheKey('figure-region', file.name, file.stat.mtime, pageNumber, rect.map((n) => Math.round(n)).join(','), PROMPT_VERSION, lang);
+    const key = await providerCacheKey(plugin, 'figure-region', file.path, file.stat.mtime, pageNumber, rect.map((n) => Math.round(n)).join(','), PROMPT_VERSION, lang);
 
     const view = await getOrCreateAISidebar(plugin, true);
     if (!view) return;
