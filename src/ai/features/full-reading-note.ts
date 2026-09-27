@@ -5,6 +5,7 @@ import { ANNOTATION_CATEGORIES, type AnnotationCategory } from '../settings';
 
 export interface ReadingText {
 	quote: string;
+	translation: string;
 	category: AnnotationCategory;
 	explanation: string;
 }
@@ -12,6 +13,7 @@ export interface ReadingVisual {
 	kind: 'figure' | 'chart' | 'diagram' | 'table' | 'formula';
 	title: string;
 	captionQuote: string;
+	captionTranslation: string;
 	explanation: string;
 	markdown_table: string;
 	latex: string;
@@ -23,6 +25,8 @@ export interface ReadingEntry {
 	kind: 'text' | ReadingVisual['kind'];
 	title: string;
 	quote: string;
+	/** Translation of `quote`; rendered below the original so the note stays bilingual. */
+	translation?: string;
 	explanation: string;
 	location: Located | null;
 	category?: AnnotationCategory;
@@ -47,7 +51,8 @@ export function parseReadingText(value: unknown): ReadingText[] {
 		const r = record(item);
 		if (!r || typeof r.quote !== 'string' || r.quote.trim().length < 4 || typeof r.explanation !== 'string'
 			|| !r.explanation.trim() || !ANNOTATION_CATEGORIES.includes(r.category as AnnotationCategory)) throw new Error('Invalid close-reading annotation.');
-		return { quote: r.quote, category: r.category as AnnotationCategory, explanation: r.explanation };
+		return { quote: r.quote, translation: typeof r.translation === 'string' ? r.translation : '',
+			category: r.category as AnnotationCategory, explanation: r.explanation };
 	});
 }
 export function validBox(value: unknown): value is [number, number, number, number] {
@@ -62,6 +67,7 @@ export function parseReadingVisuals(value: unknown): ReadingVisual[] {
 			|| typeof r.explanation !== 'string' || !r.explanation.trim()) throw new Error('Invalid visual explanation.');
 		return { kind: r.kind as ReadingVisual['kind'], title: r.title, explanation: r.explanation,
 			captionQuote: typeof r.captionQuote === 'string' ? r.captionQuote : '',
+			captionTranslation: typeof r.captionTranslation === 'string' ? r.captionTranslation : '',
 			markdown_table: typeof r.markdown_table === 'string' ? r.markdown_table : '',
 			latex: typeof r.latex === 'string' ? r.latex : '', ...(validBox(r.bbox) ? { bbox: r.bbox } : {}) };
 	});
@@ -97,7 +103,9 @@ export function renderFullReadingNote(title: string, sourcePath: string, section
 			const alias = `${sourcePath.split('/').pop()?.replace(/\.pdf$/i, '')}, p.${entry.page}`;
 			const color = oneLine(colorFor(entry)).replace(/[\]|]/g, '').toLowerCase() || 'note';
 			lines.push(`> [!${calloutType}|${color}] ${linkFor(entry, alias).replace(/^!/, '')}`,
-				`> > ${oneLine(entry.quote || entry.title)}`, '>', `> **AI 精读 · ${oneLine(entry.title)}**`, '>');
+				`> > ${oneLine(entry.quote || entry.title)}`);
+			if (entry.translation?.trim()) lines.push('> >', `> > ${oneLine(entry.translation)}`);
+			lines.push('>', `> **AI 精读 · ${oneLine(entry.title)}**`, '>');
 			for (const line of entry.explanation.split(/\r?\n/)) lines.push(`> ${line}`);
 			if (entry.markdownTable) { lines.push('>'); for (const line of entry.markdownTable.split(/\r?\n/)) lines.push(`> ${line}`); }
 			if (entry.latex) lines.push('>', '> $$', ...entry.latex.split(/\r?\n/).map((line) => `> ${line}`), '> $$');

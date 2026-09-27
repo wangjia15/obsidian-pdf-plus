@@ -712,9 +712,18 @@ export class PDFPlusSettingTab extends PluginSettingTab {
 				titleEl.setText(heading);
 
 				setTooltip(headerEl, heading);
+				headerEl.tabIndex = 0;
+				headerEl.setAttribute('role', 'button');
+				headerEl.setAttribute('aria-label', heading);
+				this.component.registerDomEvent(headerEl, 'keydown', (evt) => {
+					if (evt.key === 'Enter' || evt.key === ' ') {
+						evt.preventDefault();
+						this.scrollToSetting(setting, { behavior: 'smooth' });
+					}
+				});
 
 				this.component.registerDomEvent(headerEl, 'click', (evt) => {
-					(setting.settingEl.previousElementSibling ?? setting.settingEl).scrollIntoView({ behavior: 'smooth' });
+					this.scrollToSetting(setting, { behavior: 'smooth' });
 					this.updateHeaderElClassOnScroll(evt);
 				});
 
@@ -729,14 +738,15 @@ export class PDFPlusSettingTab extends PluginSettingTab {
 	}
 
 	updateHeaderElClass() {
-		const tabHeight = this.containerEl.getBoundingClientRect().height;
+		const bounds = this.getScrollEl().getBoundingClientRect();
+		const tabHeight = bounds.height;
 
 		const headingEntries = Array.from(this.iconHeadings.entries());
 		for (let i = 0; i < headingEntries.length; i++) {
 			const top = headingEntries[i][1].settingEl.getBoundingClientRect().top;
 			const bottom = headingEntries[i + 1]?.[1].settingEl.getBoundingClientRect().top
 				?? this.contentEl.getBoundingClientRect().bottom;
-			const isVisible = top <= tabHeight * 0.85 && bottom >= tabHeight * 0.2 + this.headerContainerEl.clientHeight;
+			const isVisible = top <= bounds.top + tabHeight * 0.85 && bottom >= bounds.top + tabHeight * 0.2 + this.headerContainerEl.clientHeight;
 			const id = headingEntries[i][0];
 			this.headerEls.get(id)?.toggleClass('is-active', isVisible);
 		}
@@ -758,9 +768,27 @@ export class PDFPlusSettingTab extends PluginSettingTab {
 		if (setting) this.scrollToSetting(setting, options);
 	}
 
+	/**
+	 * The element that actually scrolls. Depending on the Obsidian version this is either
+	 * the tab's containerEl or one of its ancestors, so detect it instead of assuming.
+	 */
+	getScrollEl(): HTMLElement {
+		for (let el: HTMLElement | null = this.containerEl; el; el = el.parentElement) {
+			const overflowY = el.win.getComputedStyle(el).overflowY;
+			if ((overflowY === 'auto' || overflowY === 'scroll') && el.scrollHeight > el.clientHeight) return el;
+		}
+		return this.containerEl;
+	}
+
 	scrollToSetting(setting: Setting, options?: { behavior: ScrollBehavior }) {
 		const el = setting.settingEl;
-		if (el) this.containerEl.scrollTo({ top: el.offsetTop - this.headerContainerEl.offsetHeight, ...options });
+		if (!el) return;
+		const scrollEl = this.getScrollEl();
+		// Offset by the sticky header so the heading isn't hidden underneath it.
+		scrollEl.scrollTo({
+			top: scrollEl.scrollTop + el.getBoundingClientRect().top - scrollEl.getBoundingClientRect().top - this.headerContainerEl.offsetHeight,
+			...options,
+		});
 	}
 
 	openFromObsidianUrl(params: ObsidianProtocolData) {
@@ -1577,9 +1605,10 @@ export class PDFPlusSettingTab extends PluginSettingTab {
 
 	/** Refresh the setting tab and then scroll back to the original position. */
 	redisplay() {
-		const scrollTop = this.contentEl.scrollTop;
+		const scrollEl = this.getScrollEl();
+		const scrollTop = scrollEl.scrollTop;
 		this.display();
-		this.contentEl.scroll({ top: scrollTop });
+		scrollEl.scroll({ top: scrollTop });
 
 		this.events.trigger('update');
 	}
@@ -1594,6 +1623,11 @@ export class PDFPlusSettingTab extends PluginSettingTab {
 
 		// Setting tab rendering starts here
 
+		this.component.unload();
+		this.items = {};
+		this.headings.clear();
+		this.iconHeadings.clear();
+		this.headerEls.clear();
 		this.headerContainerEl.empty();
 		this.contentEl.empty();
 		this.promises = [];
@@ -1602,13 +1636,13 @@ export class PDFPlusSettingTab extends PluginSettingTab {
 
 		// Show which section is currently being displayed by highlighting the corresponding icon in the header.
 		activeWindow.setTimeout(() => this.updateHeaderElClass());
-		for (const eventType of ['wheel', 'touchmove'] as const) {
-			this.component.registerDomEvent(
-				this.contentEl, eventType,
-				debounce(() => this.updateHeaderElClass(), 100),
-				{ passive: true }
-			);
-		}
+		// Scroll events don't bubble, and the scrolling element may be an ancestor of containerEl,
+		// so listen in the capture phase at the document level.
+		const onScroll = debounce(() => this.updateHeaderElClass(), 100);
+		this.component.registerDomEvent(activeDocument, 'scroll', (evt) => {
+			const target = evt.target;
+			if (target instanceof Node && (target.contains(this.containerEl) || this.containerEl.contains(target))) onScroll();
+		}, { passive: true, capture: true });
 
 
 		this.contentEl.createDiv('top-note', async (el) => {

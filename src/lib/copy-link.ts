@@ -1,8 +1,8 @@
 import { Editor, EditorRange, MarkdownFileInfo, MarkdownView, Notice, TFile } from 'obsidian';
 
 import { PDFPlusLibSubmodule } from './submodule';
-import { PDFPlusTemplateProcessor } from 'template';
-import { encodeLinktext, getOffsetInTextLayerNode, getTextLayerInfo, getTextLayerNode, paramsToSubpath, parsePDFSubpath, subpathToParams } from 'utils';
+import { PDFPlusTemplateProcessor, TemplateProcessor } from 'template';
+import { encodeLinktext, isTargetHTMLElement, getOffsetInTextLayerNode, getTextLayerInfo, getTextLayerNode, paramsToSubpath, parsePDFSubpath, subpathToParams } from 'utils';
 import { Canvas, PDFOutlineTreeNode, PDFViewerChild, Rect } from 'typings';
 import { ColorPalette } from 'color-palette';
 
@@ -552,6 +552,44 @@ export class copyLinkLib extends PDFPlusLibSubmodule {
         return true;
     }
 
+    /**
+     * While the "command to execute when target not identified" dialog (e.g. the quick switcher) is open,
+     * make Shift+Enter on an EMPTY query create a note with a default name. Obsidian itself ignores
+     * Shift+Enter when the query is empty, so the first auto-paste after annotating would otherwise go nowhere.
+     * Returns a function that removes the handler.
+     */
+    private createNoteOnShiftEnterInPrompt(): () => void {
+        const pdf = this.app.workspace.getActiveFile();
+        const doc = activeDocument;
+        const onKeyDown = (evt: KeyboardEvent) => {
+            if (evt.key !== 'Enter' || !evt.shiftKey || evt.isComposing) return;
+            const target = evt.target;
+            if (!isTargetHTMLElement(evt, target) || !target.instanceOf(HTMLInputElement) || !target.closest('.modal-container .prompt')) return;
+            if (target.value.trim()) return;
+
+            let name = '';
+            if (pdf && pdf.extension === 'pdf') {
+                const format = this.settings.newFileNameFormat;
+                if (format) {
+                    name = new TemplateProcessor(this.plugin, { file: pdf, folder: pdf.parent, app: this.app }).evalTemplate(format);
+                }
+                name ||= pdf.basename;
+            }
+            name = name.replace(/[\\/:*?"<>|#^[\]]/g, ' ').trim() || 'Untitled';
+            // Fill the query, then replay Shift+Enter so the dialog's own handler creates the note.
+            // Replaying (rather than letting this event continue) works regardless of listener order.
+            evt.preventDefault();
+            evt.stopImmediatePropagation();
+            target.value = name;
+            target.dispatchEvent(new Event('input', { bubbles: true }));
+            target.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', shiftKey: true, bubbles: true, cancelable: true }));
+        };
+        doc.addEventListener('keydown', onKeyDown, true);
+        const remove = () => doc.removeEventListener('keydown', onKeyDown, true);
+        this.plugin.register(remove);
+        return remove;
+    }
+
     async autoPaste(text: string): Promise<boolean> {
         const file = this.getAutoFocusOrAutoPasteTarget(this.settings.autoPasteTarget);
 
@@ -571,6 +609,7 @@ export class copyLinkLib extends PDFPlusLibSubmodule {
         }
 
         let isResolved = false;
+        const removeShiftEnterHandler = this.createNoteOnShiftEnterInPrompt();
 
         return new Promise<boolean>((resolve) => {
             const eventRef = this.app.workspace.on('file-open', async (file) => {
@@ -617,6 +656,7 @@ export class copyLinkLib extends PDFPlusLibSubmodule {
         })
             .then((success) => {
                 isResolved = true;
+                removeShiftEnterHandler();
                 return success;
             });
     }
@@ -658,6 +698,8 @@ export class copyLinkLib extends PDFPlusLibSubmodule {
             }
         });
 
+        const removeShiftEnterHandler = this.createNoteOnShiftEnterInPrompt();
+        activeWindow.setTimeout(removeShiftEnterHandler, this.settings.autoPasteTargetDialogTimeoutSec * 1000);
         return this.app.commands.executeCommandById(command.id);
     }
 

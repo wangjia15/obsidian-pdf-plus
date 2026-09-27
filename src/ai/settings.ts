@@ -37,6 +37,8 @@ export interface AISettings {
         ttsModelPodcast: string;// 'speech-2.8-hd'
     };
 
+    promptEditor: { system: string; user: string };
+
     outputLanguage: 'zh' | 'en' | 'auto';
     voices: { zh: string; en: string; podcastHostA: string; podcastHostB: string };
     speechRate: number;   // 0.5–2.0
@@ -88,6 +90,7 @@ export const DEFAULT_AI_SETTINGS: AISettings = {
         ttsModelPodcast: 'speech-2.8-hd',
     },
 
+    promptEditor: { system: 'You are a careful academic research assistant.', user: '' },
     outputLanguage: 'auto',
     voices: { zh: 'zh-CN-NewsYunhaoNeural', en: 'English_Trust', podcastHostA: 'male-qn-qingse', podcastHostB: 'female-shaonv' },
     speechRate: 1.0,
@@ -168,6 +171,13 @@ export function renderAISettingsSection(plugin: PDFPlus, tab: PDFPlusSettingTab)
         .setName('Privacy consent')
         .setDesc('When AI is used, selected text and images from the current PDF are sent to your selected provider. Speech uses MiniMax. Nothing is sent without an explicit action.')
         .addToggle((t) => t.setValue(ai().consentGiven).onChange(async (v) => { ai().consentGiven = v; await save(); }));
+
+    new Setting(tab.contentEl).setName('AI Prompt 编辑器')
+        .setDesc('在独立窗口中编辑、保存提示词并调用 AI，查看流式输出。')
+        .addButton((b) => b.setButtonText('打开编辑器').onClick(async () => {
+            const { PromptEditorModal } = await import('./ui/prompt-editor');
+            new PromptEditorModal(plugin).open();
+        }));
 
     // --- Provider ---
     new Setting(tab.contentEl).setName('Chat provider')

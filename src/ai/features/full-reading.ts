@@ -105,7 +105,7 @@ export async function fullReadingAction(plugin: PDFPlus) {
 							const exact = located && !located.fuzzy ? located : null;
 							if (!exact) { state.unmatched = (state.unmatched ?? 0) + 1; continue; }
 							entries.push({ page: page.pageNumber, beginIndex: exact?.beginIndex ?? 0, kind: 'text', title: annotation.category,
-								quote: exact?.matchedText ?? annotation.quote, explanation: annotation.explanation, location: exact, category: annotation.category });
+								quote: exact?.matchedText ?? annotation.quote, translation: annotation.translation, explanation: annotation.explanation, location: exact, category: annotation.category });
 						}
 						state.text = 'done';
 					} catch (error) {
@@ -138,7 +138,7 @@ export async function fullReadingAction(plugin: PDFPlus) {
 						const located = visual.captionQuote ? locateQuote(index, visual.captionQuote) : null;
 						const exact = located && !located.fuzzy ? located : null;
 						entries.push({ page: page.pageNumber, beginIndex: exact?.beginIndex ?? 0, kind: visual.kind, title: visual.title,
-							quote: exact?.matchedText || visual.title, explanation: visual.explanation, location: exact,
+							quote: exact?.matchedText || visual.title, translation: exact ? visual.captionTranslation : '', explanation: visual.explanation, location: exact,
 							...(visual.bbox ? { rect: boxToPDFRect(visual.bbox, viewport.width, viewport.height, (x, y) => viewport.convertToPdfPoint(x, y)) } : {}),
 							markdownTable: visual.markdown_table, latex: visual.latex });
 					}

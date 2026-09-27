@@ -8,7 +8,7 @@
 // Multimodal: images passed as image_url content parts (base64 data URL).
 //
 // Networking strategy:
-//   - GLM uses requestUrl for all calls, emitting the complete result to stream callbacks.
+//   - GLM and MiniMax use SSE where available, with requestUrl fallback on CORS failure.
 //   - MiniMax chatStream(): true SSE streaming when the platform `fetch` exists (desktop + modern mobile);
 //     otherwise falls back to a single requestUrl round-trip (non-streaming).
 //   - chat(): always a single requestUrl round-trip (works everywhere, incl. older mobile).
@@ -127,11 +127,14 @@ export class MiniMaxChatClient {
     chatStream(req: ChatRequest, onDelta: (delta: string) => void): ChatStreamHandle {
         let partial = '';
         let cancelRequested = false;
-        const ac = req.signal ? undefined : new AbortController();
-        const signal = req.signal ?? ac!.signal;
+        const ac = new AbortController();
+        const signal = ac.signal;
+        const abort = () => ac.abort();
+        if (req.signal?.aborted) ac.abort();
+        else req.signal?.addEventListener('abort', abort, { once: true });
 
         const done = (async (): Promise<ChatResponse> => {
-            if (this.s.chatProvider === 'glm-cn' || typeof fetch === 'undefined') {
+            if (typeof fetch === 'undefined') {
                 // Fallback: single round-trip, emit all at once.
                 const full = await this.chat({ ...req, signal });
                 if (full.text) { partial = full.text; onDelta(full.text); }
@@ -139,12 +142,22 @@ export class MiniMaxChatClient {
             }
             this.cfg.beforeCall?.();
             if (!this.provider.apiKey) throw new AIError('auth', 'Configure the selected chat provider API key first.');
-            const resp = await fetch(this.chatUrl, {
+            let resp: Response;
+            try {
+                resp = await fetch(this.chatUrl, {
                 method: 'POST',
                 headers: this.headers,
                 body: JSON.stringify(this.body(req, true)),
                 signal,
-            });
+                });
+            } catch (e) {
+                if (signal.aborted) throw new AIError('aborted', 'Cancelled.');
+                // Browser CORS can block streaming; requestUrl remains mobile-safe.
+                if (!(e instanceof TypeError)) throw e;
+                const full = await this.chat({ ...req, signal });
+                if (full.text) { partial = full.text; onDelta(full.text); }
+                return full;
+            }
             if (!resp.ok || !resp.body) {
                 let json: any;
                 try { json = await resp.json(); } catch { /* ignore */ }
@@ -164,17 +177,23 @@ export class MiniMaxChatClient {
             } catch (e) {
                 // Aborted or errored mid-stream — still account for the tokens already produced,
                 // so the monthly budget isn't systematically under-counted on cancellation.
-                if (usage.completionTokens === 0) usage = { ...usage, completionTokens: Math.ceil(partial.length / 4) };
+                if (usage.totalTokens === 0) {
+                    const completionTokens = usage.completionTokens || Math.ceil(partial.length / 4);
+                    usage = { ...usage, completionTokens, totalTokens: usage.promptTokens + completionTokens };
+                }
                 this.cfg.onUsage?.(usage);
                 throw e;
             }
+            if (signal.aborted || cancelRequested) throw new AIError('aborted', 'Cancelled.');
+            if (!partial.trim()) throw new AIError('badResponse', 'The provider returned no text.');
+            if (!usage.totalTokens) usage.totalTokens = usage.promptTokens + (usage.completionTokens || Math.ceil(partial.length / 4));
             const result: ChatResponse = { text: partial, usage, raw: null };
             this.cfg.onUsage?.(usage);
             return result;
         })();
 
         return {
-            done: done.finally(() => { /* no-op */ }),
+            done: done.finally(() => req.signal?.removeEventListener('abort', abort)),
             partial: () => partial,
             cancel: () => { cancelRequested = true; ac?.abort(); },
         };
@@ -243,6 +262,12 @@ async function readSSE(body: ReadableStream<Uint8Array>, onData: (data: string) 
                     if (data) onData(data);
                 }
             }
+        }
+        buffer += decoder.decode();
+        const line = buffer.trim();
+        if (line.startsWith('data:')) {
+            const data = line.slice(5).trim();
+            if (data) onData(data);
         }
     } finally {
         // Release the reader lock and cancel the body on any exit (incl. abort) so a halted

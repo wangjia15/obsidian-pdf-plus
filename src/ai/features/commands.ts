@@ -7,6 +7,7 @@
 // can never drift out of sync.
 
 import { Notice } from 'obsidian';
+import { PromptEditorModal } from '../ui/prompt-editor';
 import PDFPlus from 'main';
 import { getOrCreateAISidebar } from '../ui/sidebar-view';
 import { stopSpeaking } from '../audio/speak';
@@ -89,6 +90,7 @@ export const AI_COMMANDS: AICommandDef[] = [
     { suffix: 'knowledge-map', label: 'Generate knowledge map (canvas/graph notes)', group: 'knowledge', icon: 'lucide-workflow', run: (p) => generateKnowledgeMapAction(p) },
 
     // --- 工具 ---
+    { suffix: 'prompt-editor', label: '打开 Prompt 编辑器', group: 'util', icon: 'lucide-pencil', run: (p) => new PromptEditorModal(p).open() },
     { suffix: 'open-sidebar', label: 'Open AI sidebar', group: 'util', icon: 'lucide-panel-right', hideInSidebar: true, run: (p) => getOrCreateAISidebar(p, true) },
     { suffix: 'stop-speaking', label: 'Stop speaking', group: 'util', icon: 'lucide-volume-x', run: (p) => stopSpeaking(p) },
     {
